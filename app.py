@@ -269,8 +269,8 @@ components.html("""
 <script>
 (function() {
   function setupScrimClose() {
-    const app = document.querySelector('.stApp') || document.querySelector('[data-testid="stAppViewContainer"]');
-    const sidebar = document.querySelector('[data-testid="stSidebar"]');
+    const app = parent.document.querySelector('.stApp') || parent.document.querySelector('[data-testid="stAppViewContainer"]');
+    const sidebar = parent.document.querySelector('[data-testid="stSidebar"]');
     if (!app || !sidebar) { setTimeout(setupScrimClose, 500); return; }
     app.addEventListener('click', function(e) {
       if (sidebar.getAttribute('aria-expanded') !== 'true') return;
@@ -284,7 +284,7 @@ components.html("""
 
   // Fix FAB button size — Streamlit emotion CSS sets 0x0 with !important
   function fixFab() {
-    const fab = document.querySelector('[data-testid="stExpandSidebarButton"]');
+    const fab = parent.document.querySelector('[data-testid="stExpandSidebarButton"]');
     if (fab) {
       fab.style.setProperty('width', '44px', 'important');
       fab.style.setProperty('height', '44px', 'important');
@@ -295,13 +295,13 @@ components.html("""
 
   setTimeout(setupScrimClose, 1000);
   setTimeout(fixFab, 800);
-  if (document.body) {
+  if (parent.document.body) {
     const observer = new MutationObserver(function() {
       clearTimeout(window._scrimTimer);
       window._scrimTimer = setTimeout(setupScrimClose, 500);
       fixFab();
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(parent.document.body, { childList: true, subtree: true });
   }
 })();
 </script>
