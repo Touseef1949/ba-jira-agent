@@ -26,6 +26,7 @@ st.set_page_config(
 CARD_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0&display=swap');
 :root {
   --accent: #1DB954;
   --accent-dark: #169a45;
@@ -53,7 +54,7 @@ CARD_CSS = """
 }
 
 * { font-family: var(--font-sans) !important; }
-[data-testid="stIconMaterial"] { font-family: "Material Symbols Outlined" !important; }
+[data-testid="stIconMaterial"] { font-family: "Material Symbols Rounded" !important; }
 html { scroll-behavior: smooth; }
 
 .stApp { background: var(--bg); color: var(--text); }
