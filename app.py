@@ -268,12 +268,17 @@ st.markdown(CARD_CSS, unsafe_allow_html=True)
 components.html("""
 <script>
 (function() {
-  // Auto-collapse sidebar on mobile load
+  // Auto-collapse sidebar on mobile load (poll until button exists)
   if (window.innerWidth < 768) {
-    setTimeout(function() {
-      const collapseBtn = parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button');
-      if (collapseBtn) collapseBtn.click();
-    }, 600);
+    var attempts = 0;
+    var autoCollapse = setInterval(function() {
+      var collapseBtn = parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button');
+      if (collapseBtn) {
+        collapseBtn.click();
+        clearInterval(autoCollapse);
+      }
+      if (++attempts > 30) clearInterval(autoCollapse);
+    }, 200);
   }
 
   function setupScrimClose() {
