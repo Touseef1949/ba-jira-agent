@@ -6,13 +6,10 @@ Provides a chat-style interface for querying a Jira backlog using
 a DeepSeek-powered AI agent with 4 custom tools.
 """
 
-import json
-import sys
 from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from services.agent_service import get_all_tickets, get_metrics, run_agent_query
 from services.error_logging import log_error
@@ -22,7 +19,7 @@ st.set_page_config(
     page_title="BA Jira Agent",
     page_icon="🤖",
     layout="centered",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="collapsed",
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -185,52 +182,13 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
 .app-footer { text-align: center; color: var(--muted-2); font-size: 0.75rem; padding: 1.5rem 0 0.5rem 0; border-top: 1px solid var(--border); margin-top: 2rem; }
 
 /* ═══════════════════════════════════════════════════════════════════
-   MOBILE OVERLAY SIDEBAR (768px breakpoint)
+   MOBILE RESPONSIVE (768px breakpoint)
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  /* ── Overlay sidebar drawer ── */
-  [data-testid="stSidebar"] {
-    position: fixed !important; top: 0; left: 0; bottom: 0;
-    width: 85vw !important; max-width: 320px !important; min-width: 280px !important;
-    z-index: 9999 !important;
-    transform: translateX(-100%) !important;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  [data-testid="stSidebar"][aria-expanded="true"] {
-    transform: translateX(0) !important;
-    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
-  }
-
-  /* ── Scrim backdrop ── */
-  .stApp::after {
-    content: ""; display: block; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5); z-index: 9998;
-    opacity: 0; visibility: hidden; pointer-events: none;
-    transition: opacity 0.3s ease;
-  }
-  .stApp:has([data-testid="stSidebar"][aria-expanded="true"])::after {
-    opacity: 1; visibility: visible; pointer-events: auto;
-  }
-
-  /* ── FAB — sidebar toggle button ── */
-  .stApp button.e12tamyi15[data-testid="stExpandSidebarButton"] {
-    position: fixed !important; top: 0.75rem !important; left: 0.75rem !important;
-    z-index: 10000 !important;
-    width: 44px !important; height: 44px !important;
-    min-height: 44px !important; min-width: 44px !important;
-    display: flex !important; align-items: center !important; justify-content: center !important;
-    border-radius: 12px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--bg) !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
-  }
-  .stApp button.e12tamyi15[data-testid="stExpandSidebarButton"] svg { width: 22px !important; height: 22px !important; }
-
   /* ── Main content ── */
   [data-testid="stAppViewContainer"] .block-container {
-  padding: 1.25rem 1.25rem 4rem 1.25rem !important; margin-left: 0 !important; max-width: 100% !important;
+    padding: 1.25rem 1.25rem 4rem 1.25rem !important; margin-left: 0 !important; max-width: 100% !important;
   }
-  [data-testid="stAppViewContainer"] > section { padding-top: 0.5rem !important; }
 
   /* ── Stack columns ── */
   [data-testid="stHorizontalBlock"] > [data-testid="column"] {
@@ -264,115 +222,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
 
 st.markdown(CARD_CSS, unsafe_allow_html=True)
 
-# ── Mobile sidebar tap-to-close JS ────────────────────────────────────────────
-
-components.html("""
-<script>
-(function() {
-  // Auto-collapse sidebar on mobile load (poll until button exists)
-  if (window.innerWidth < 768) {
-    var attempts = 0;
-    var autoCollapse = setInterval(function() {
-      var collapseBtn = parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button');
-      if (collapseBtn) {
-        collapseBtn.click();
-        clearInterval(autoCollapse);
-      }
-      if (++attempts > 30) clearInterval(autoCollapse);
-    }, 200);
-  }
-
-  function setupScrimClose() {
-    const app = parent.document.querySelector('.stApp') || parent.document.querySelector('[data-testid="stAppViewContainer"]');
-    const sidebar = parent.document.querySelector('[data-testid="stSidebar"]');
-    if (!app || !sidebar) { setTimeout(setupScrimClose, 500); return; }
-    app.addEventListener('click', function(e) {
-      if (sidebar.getAttribute('aria-expanded') !== 'true') return;
-      const r = sidebar.getBoundingClientRect();
-      if (e.clientX > r.right || e.clientX < r.left) {
-        const btn = sidebar.querySelector('[data-testid="stSidebarCollapseButton"] button');
-        if (btn) btn.click();
-      }
-    }, { capture: true });
-  }
-
-  // Fix FAB button size — Streamlit emotion CSS sets 0x0 with !important
-  function fixFab() {
-    const fab = parent.document.querySelector('[data-testid="stExpandSidebarButton"]');
-    if (fab) {
-      fab.style.setProperty('width', '44px', 'important');
-      fab.style.setProperty('height', '44px', 'important');
-      fab.style.setProperty('min-width', '44px', 'important');
-      fab.style.setProperty('min-height', '44px', 'important');
-    }
-  }
-
-  setTimeout(setupScrimClose, 1000);
-  setTimeout(fixFab, 800);
-  if (parent.document.body) {
-    const observer = new MutationObserver(function() {
-      clearTimeout(window._scrimTimer);
-      window._scrimTimer = setTimeout(setupScrimClose, 500);
-      fixFab();
-    });
-    observer.observe(parent.document.body, { childList: true, subtree: true });
-  }
-})();
-</script>
-""", height=0)
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    # Brand card
-    st.markdown(
-        """
-        <div class="sidebar-brand">
-          <div class="brand-logo">🤖</div>
-          <div class="brand-name">BA Jira Agent</div>
-          <div class="brand-desc">
-            AI-powered backlog analysis.<br>
-            LangChain ReAct agent with DeepSeek.
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # About section
-    with st.expander("ℹ️ About", expanded=False):
-        st.markdown(
-            """
-            **BA Jira Agent** wraps a LangGraph ReAct agent
-            in a Streamlit UI. The agent reasons about Jira
-            backlogs using 4 custom tools:
-            - `load_tickets` — full backlog listing
-            - `filter_tickets` — filter by field/value
-            - `search_tickets` — keyword search
-            - `calculate_metrics` — sprint & backlog stats
-
-            Built with LangChain, LangGraph, and
-            DeepSeek Chat API.
-            """
-        )
-
-    # Example queries
-    st.markdown("### 💡 Example Queries")
-    example_queries = [
-        "Show me all open bugs in Sprint 24",
-        "What's the total story points across all tickets?",
-        "Search for anything related to performance",
-        "Show me unassigned tickets",
-        "Calculate sprint velocity for all sprints",
-        "How many tickets are assigned to Priya?",
-    ]
-    for i, q in enumerate(example_queries):
-        if st.button(q, key=f"example_{i}", width="stretch"):
-            st.session_state.query = q
-            st.session_state[f"query_input"] = q
-
-# ── Main Area ─────────────────────────────────────────────────────────────────
-
-# Hero card
+# ── Hero card ──────────────────────────────────────────────────────────────────
 st.markdown(
     """
     <div class="hero-card">
@@ -392,6 +242,39 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ── About & Example Queries ────────────────────────────────────────────────────
+with st.expander("ℹ️ About", expanded=False):
+    st.markdown(
+        """
+        **BA Jira Agent** wraps a LangGraph ReAct agent in a Streamlit UI.
+        The agent reasons about Jira backlogs using 4 custom tools:
+
+        - `load_tickets` — full backlog listing
+        - `filter_tickets` — filter by field/value
+        - `search_tickets` — keyword search
+        - `calculate_metrics` — sprint & backlog stats
+
+        Built with LangChain, LangGraph, and DeepSeek Chat API.
+        """
+    )
+
+st.caption("💡 **Try an example:**")
+example_queries = [
+    "Show me all open bugs in Sprint 24",
+    "What's the total story points across all tickets?",
+    "Search for anything related to performance",
+    "Show me unassigned tickets",
+    "Calculate sprint velocity for all sprints",
+    "How many tickets are assigned to Priya?",
+]
+cols = st.columns(3)
+for i, q in enumerate(example_queries):
+    with cols[i % 3]:
+        if st.button(q, key=f"example_{i}", width="stretch"):
+            st.session_state.query = q
+            st.session_state[f"query_input"] = q
+st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Metrics Dashboard ─────────────────────────────────────────────────────────
 metrics = get_metrics()
