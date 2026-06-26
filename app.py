@@ -281,11 +281,25 @@ components.html("""
       }
     }, { capture: true });
   }
+
+  // Fix FAB button size — Streamlit emotion CSS sets 0x0 with !important
+  function fixFab() {
+    const fab = document.querySelector('[data-testid="stExpandSidebarButton"]');
+    if (fab) {
+      fab.style.setProperty('width', '44px', 'important');
+      fab.style.setProperty('height', '44px', 'important');
+      fab.style.setProperty('min-width', '44px', 'important');
+      fab.style.setProperty('min-height', '44px', 'important');
+    }
+  }
+
   setTimeout(setupScrimClose, 1000);
+  setTimeout(fixFab, 800);
   if (document.body) {
     const observer = new MutationObserver(function() {
       clearTimeout(window._scrimTimer);
       window._scrimTimer = setTimeout(setupScrimClose, 500);
+      fixFab();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
