@@ -60,6 +60,7 @@ html { scroll-behavior: smooth; }
 
 .stApp { background: var(--bg); color: var(--text); }
 header[data-testid="stHeader"] { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
 .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1080px; }
 
 /* ── Sidebar ── */
@@ -210,7 +211,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
   }
 
   /* ── FAB — sidebar toggle button ── */
-  [data-testid="stExpandSidebarButton"] {
+  button[data-testid="stExpandSidebarButton"] {
     position: fixed !important; top: 0.75rem !important; left: 0.75rem !important;
     z-index: 10000 !important;
     width: 44px !important; height: 44px !important;
@@ -221,7 +222,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
     background: var(--bg) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
   }
-  [data-testid="stExpandSidebarButton"] svg { width: 22px !important; height: 22px !important; }
+  button[data-testid="stExpandSidebarButton"] svg { width: 22px !important; height: 22px !important; }
 
   /* ── Main content ── */
   [data-testid="stAppViewContainer"] .block-container {
@@ -236,7 +237,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
 
   /* ── 14px font floor ── */
   [data-testid="stAppViewContainer"] .block-container p,
-  [data-testid="stAppViewContainer"] .block-container span,
+  [data-testid="stAppViewContainer"] .block-container span:not(.hero-chip-row span),
   [data-testid="stAppViewContainer"] .block-container label,
   [data-testid="stAppViewContainer"] .block-container small {
     font-size: 0.875rem !important; line-height: 1.4 !important;
@@ -252,9 +253,9 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
   }
 
   .hero-card { padding: 1.2rem 1rem; }
-  .hero-title { font-size: 1.5rem; }
-  .hero-subtitle { font-size: 0.88rem; }
-  .hero-chip-row span { font-size: 0.7rem; padding: 0.25rem 0.5rem; white-space: nowrap; }
+  .hero-title { font-size: 1.5rem !important; }
+  .hero-subtitle { font-size: 0.88rem !important; }
+  .hero-chip-row span { font-size: 0.7rem !important; padding: 0.25rem 0.5rem; white-space: nowrap; }
 }
 </style>
 """
