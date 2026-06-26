@@ -28,6 +28,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run pytest with coverage
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || 'sk-dummy-key-for-tests' }}
         run: |
           pytest \
             --cov=. \
