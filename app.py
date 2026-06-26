@@ -53,6 +53,7 @@ CARD_CSS = """
 }
 
 * { font-family: var(--font-sans) !important; }
+[data-testid="stIconMaterial"] { font-family: "Material Symbols Outlined" !important; }
 html { scroll-behavior: smooth; }
 
 .stApp { background: var(--bg); color: var(--text); }
