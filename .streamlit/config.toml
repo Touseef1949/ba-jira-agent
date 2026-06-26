@@ -1,0 +1,15 @@
+[theme]
+base = "light"
+primaryColor = "#1DB954"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FAFAFA"
+textColor = "#1A1A1A"
+font = "sans serif"
+
+[server]
+# Default port for local dev; HF Spaces overrides via CMD
+port = 8503
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
