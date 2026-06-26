@@ -268,6 +268,14 @@ st.markdown(CARD_CSS, unsafe_allow_html=True)
 components.html("""
 <script>
 (function() {
+  // Auto-collapse sidebar on mobile load
+  if (window.innerWidth < 768) {
+    setTimeout(function() {
+      const collapseBtn = parent.document.querySelector('[data-testid="stSidebarCollapseButton"] button');
+      if (collapseBtn) collapseBtn.click();
+    }, 600);
+  }
+
   function setupScrimClose() {
     const app = parent.document.querySelector('.stApp') || parent.document.querySelector('[data-testid="stAppViewContainer"]');
     const sidebar = parent.document.querySelector('[data-testid="stSidebar"]');
