@@ -254,6 +254,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
   .hero-card { padding: 1.2rem 1rem; }
   .hero-title { font-size: 1.5rem; }
   .hero-subtitle { font-size: 0.88rem; }
+  .hero-chip-row span { font-size: 0.7rem; padding: 0.25rem 0.5rem; white-space: nowrap; }
 }
 </style>
 """
@@ -335,7 +336,7 @@ with st.sidebar:
         "How many tickets are assigned to Priya?",
     ]
     for i, q in enumerate(example_queries):
-        if st.button(q, key=f"example_{i}", use_container_width=True):
+        if st.button(q, key=f"example_{i}", width="stretch"):
             st.session_state.query = q
 
 # ── Main Area ─────────────────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ st.markdown(
       <div class="hero-chip-row">
         <span>DeepSeek LLM</span>
         <span>4 Custom Tools</span>
-        <span>ReAct Pattern</span>
+        <span>ReAct Agent</span>
         <span>LangGraph</span>
       </div>
     </div>
@@ -425,11 +426,11 @@ query = st.text_area(
     key="query_input",
 )
 
-submit_col, clear_col = st.columns([1, 5])
+submit_col, clear_col = st.columns([1, 1])
 with submit_col:
-    submitted = st.button("🚀 Run Agent", use_container_width=True)
+    submitted = st.button("🚀 Run Agent", width="stretch", type="primary")
 with clear_col:
-    if st.button("Clear", use_container_width=True):
+    if st.button("🗑️ Clear", width="stretch"):
         st.session_state.query_response = None
         st.session_state.query_trace = None
         st.rerun()
@@ -517,16 +518,17 @@ if tickets:
 
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
+        height=400,
         column_config={
             "key": st.column_config.TextColumn("Key", width="small"),
             "type": st.column_config.TextColumn("Type", width="small"),
             "priority": st.column_config.TextColumn("Priority", width="small"),
             "status": st.column_config.TextColumn("Status", width="small"),
-            "assignee": st.column_config.TextColumn("Assignee", width="small"),
+            "assignee": st.column_config.TextColumn("Assignee", width="medium"),
             "story_points": st.column_config.NumberColumn("SP", width="small"),
-            "sprint": st.column_config.TextColumn("Sprint", width="small"),
+            "sprint": st.column_config.TextColumn("Sprint", width="medium"),
             "summary": st.column_config.TextColumn("Summary", width="large"),
         },
     )
