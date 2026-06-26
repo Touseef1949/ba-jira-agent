@@ -75,6 +75,7 @@ header[data-testid="stHeader"] { display: none !important; }
   background: var(--panel-soft) !important; border-color: var(--accent) !important;
 }
 [data-testid="stSidebar"] hr { border-color: var(--border) !important; }
+[data-testid="stSidebar"] .stButton { margin-bottom: 0.35rem; }
 [data-testid="stSidebarContent"]::-webkit-scrollbar-track { background: var(--panel-soft); }
 [data-testid="stSidebarContent"]::-webkit-scrollbar-thumb { background: rgba(29,185,84,0.3); }
 
@@ -130,7 +131,7 @@ p, li, label, span, div { color: var(--text) !important; text-wrap: pretty; }
   background: linear-gradient(90deg, var(--accent), var(--accent-light), var(--violet));
 }
 .hero-eyebrow {
-  color: var(--accent) !important; font-size: 0.78rem; font-weight: 800;
+  color: #0d7a2e !important; font-size: 0.78rem; font-weight: 800;
   letter-spacing: 0.12em; margin-bottom: 0.5rem; text-transform: uppercase;
 }
 .hero-title {
@@ -226,7 +227,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
 
   /* ── Main content ── */
   [data-testid="stAppViewContainer"] .block-container {
-    padding: 1rem 1rem 4rem 1rem !important; margin-left: 0 !important; max-width: 100% !important;
+  padding: 1.25rem 1.25rem 4rem 1.25rem !important; margin-left: 0 !important; max-width: 100% !important;
   }
   [data-testid="stAppViewContainer"] > section { padding-top: 0.5rem !important; }
 
@@ -524,7 +525,7 @@ if tickets:
         display_df,
         width="stretch",
         hide_index=True,
-        height=400,
+        height=550,
         column_config={
             "key": st.column_config.TextColumn("Key", width="small"),
             "type": st.column_config.TextColumn("Type", width="small"),
