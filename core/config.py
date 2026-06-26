@@ -32,6 +32,63 @@ APP_TITLE = "BA Jira Agent"
 APP_ICON = "🤖"
 APP_PORT = int(os.getenv("APP_PORT", "8503"))
 
+# ── Prompt Injection Guard ───────────────────────────────────────────────────
+# Compiled regex patterns for detecting common prompt injection / jailbreak
+# attempts. Used by agent_service.py to reject malicious queries before they
+# reach the LLM.
+import re as _re
+
+PROMPT_INJECTION_GUARD: list[tuple[str, _re.Pattern]] = [
+    (
+        "ignore_previous_instructions",
+        _re.compile(
+            r"(ignore|forget|disregard)\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|directives?)",
+            _re.IGNORECASE,
+        ),
+    ),
+    (
+        "system_prompt_leak",
+        _re.compile(
+            r"(reveal|show|print|display|output|tell\s+me)\s+(me\s+)?(your\s+)?(system\s+)?(prompt|instructions?|directives?|rules?)",
+            _re.IGNORECASE,
+        ),
+    ),
+    (
+        "role_override",
+        _re.compile(
+            r"(you\s+are\s+now|act\s+as|pretend\s+you\s+are|you\s+are\s+a)\s+(DAN|jailbreak|evil|unfiltered|unrestricted)",
+            _re.IGNORECASE,
+        ),
+    ),
+    (
+        "delimiter_attack",
+        _re.compile(
+            r"_{3,}|={3,}|-{3,}|\]{3,}|\[{3,}|<\|.*?\|>",
+        ),
+    ),
+    (
+        "encoding_obfuscation",
+        _re.compile(
+            r"(base64|rot13|decode|encode)\s*\(?\s*['\"].*?['\"]\s*\)?",
+            _re.IGNORECASE,
+        ),
+    ),
+    (
+        "nested_prompt",
+        _re.compile(
+            r"\[system\]|\[/system\]|\[assistant\]|\[/assistant\]|\[user\]|\[/user\]",
+            _re.IGNORECASE,
+        ),
+    ),
+    (
+        "system_override",
+        _re.compile(
+            r"(?<!\[)system\s*:\s*",
+            _re.IGNORECASE,
+        ),
+    ),
+]
+
 
 def safe_secret(value: str, visible_chars: int = 4) -> str:
     """

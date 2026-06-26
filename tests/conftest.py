@@ -6,6 +6,22 @@ Provides:
   - mock_agent  : a MagicMock that patches agent.invoke for agent_service tests
 """
 
+
+def pytest_configure(config):
+    """Register custom pytest markers."""
+    config.addinivalue_line(
+        "markers", "smoke: smoke tests (fast, critical path)"
+    )
+    config.addinivalue_line(
+        "markers", "unit: unit tests for individual components"
+    )
+    config.addinivalue_line(
+        "markers", "integration: integration tests requiring file I/O or fixtures"
+    )
+    config.addinivalue_line(
+        "markers", "regression: regression tests verifying consistency across runs"
+    )
+
 import json
 import os
 from unittest.mock import MagicMock, patch

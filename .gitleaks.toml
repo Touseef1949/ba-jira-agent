@@ -1,0 +1,23 @@
+# Gitleaks configuration for BA Jira Agent
+# Excludes .env.example, test fixtures, and mock data from secret scanning.
+
+title = "BA Jira Agent — Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+  description = "Allowed files and paths"
+
+  paths = [
+    '''.env.example''',
+    '''tests/.*''',
+    '''data/jira_export\.json''',
+  ]
+
+  # Allowlist known placeholder/test secret patterns
+  regexes = [
+    '''sk-you...here''',
+    '''DEEPSEEK_API_KEY=your-key-here''',
+    '''placeholder''',
+  ]

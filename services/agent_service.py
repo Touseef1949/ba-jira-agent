@@ -6,10 +6,13 @@ for running agent queries, loading tickets, and calculating metrics.
 """
 
 import json
+import time
 from pathlib import Path
 
 from agent import agent as _agent
-from services.error_logging import log_error
+from core.models import AgentResult, DashboardMetrics
+from services.error_logging import log_error, log_latency
+from services.logic import compute_metrics, validate_query
 
 
 def run_agent_query(query: str) -> dict:
@@ -25,8 +28,20 @@ def run_agent_query(query: str) -> dict:
             - trace (list[dict]): Full ReAct trace with role and content
               for each message in the chain.
     """
+    # Validate the query before calling the agent
+    valid, reason = validate_query(query)
+    if not valid:
+        return {
+            "answer": f"\u274c Invalid query: {reason}",
+            "trace": [{"role": "error", "content": reason}],
+        }
+
+    start = time.monotonic()
     try:
         result = _agent.invoke({"messages": [{"role": "user", "content": query}]})
+        latency_ms = round((time.monotonic() - start) * 1000, 1)
+        log_latency("run_agent_query", latency_ms)
+
         messages = result.get("messages", [])
 
         answer = "No output returned by the agent."
@@ -59,10 +74,19 @@ def run_agent_query(query: str) -> dict:
 
             trace.append(entry)
 
-        return {"answer": answer, "trace": trace}
+        # Build the AgentResult for internal use; return dict for backward compat
+        agent_result = AgentResult(answer=answer, trace=trace)
+        return {"answer": agent_result.answer, "trace": agent_result.trace}
 
     except Exception as e:
-        log_error("agent", str(e), exc_info=True, context={"query": query})
+        latency_ms = round((time.monotonic() - start) * 1000, 1)
+        log_error(
+            "agent",
+            str(e),
+            exc_info=True,
+            context={"query": query},
+            latency_ms=latency_ms,
+        )
         return {
             "answer": f"\u274c Agent error: {str(e)}",
             "trace": [{"role": "error", "content": str(e)}],
@@ -98,15 +122,12 @@ def get_metrics() -> dict:
     """
     try:
         tickets = get_all_tickets()
+        metrics: DashboardMetrics = compute_metrics(tickets)
         return {
-            "total": len(tickets),
-            "total_sp": sum(t.get("story_points", 0) or 0 for t in tickets),
-            "unassigned": sum(1 for t in tickets if not t.get("assignee")),
-            "open_bugs": sum(
-                1
-                for t in tickets
-                if t.get("type") == "Bug" and t.get("status") == "Open"
-            ),
+            "total": metrics.total,
+            "total_sp": metrics.total_sp,
+            "unassigned": metrics.unassigned,
+            "open_bugs": metrics.open_bugs,
         }
     except Exception as e:
         log_error("metrics", str(e), exc_info=True)
