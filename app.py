@@ -338,6 +338,7 @@ with st.sidebar:
     for i, q in enumerate(example_queries):
         if st.button(q, key=f"example_{i}", width="stretch"):
             st.session_state.query = q
+            st.session_state[f"query_input"] = q
 
 # ── Main Area ─────────────────────────────────────────────────────────────────
 
@@ -416,10 +417,11 @@ st.markdown("### 🔍 Ask the Agent")
 # Initialize session state for query
 if "query" not in st.session_state:
     st.session_state.query = ""
+if "query_input" not in st.session_state:
+    st.session_state.query_input = ""
 
 query = st.text_area(
     "Describe what you want to know about the Jira backlog:",
-    value=st.session_state.query,
     placeholder="e.g., Show me all critical bugs and their assignees",
     height=80,
     label_visibility="collapsed",
@@ -436,10 +438,11 @@ with clear_col:
         st.rerun()
 
 # ── Execute Agent ─────────────────────────────────────────────────────────────
-if submitted and query.strip():
+if submitted and st.session_state.get("query_input", "").strip():
+
     with st.spinner("🤔 Agent is reasoning... this may take 10–30 seconds"):
         try:
-            result = run_agent_query(query.strip())
+            result = run_agent_query(st.session_state.query_input.strip())
             st.session_state.query_response = result["answer"]
             st.session_state.query_trace = result["trace"]
         except Exception as exc:
