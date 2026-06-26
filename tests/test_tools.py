@@ -208,3 +208,22 @@ class TestRegression:
         assert result1 == result2
         assert "=== BACKLOG SUMMARY ===" in result1
         assert "Total Tickets:" in result1
+
+
+# ── filter_tickets — no matches ─────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_filter_tickets_no_match():
+    """filter_tickets should return 'No tickets found' for an impossible match."""
+    result = filter_tickets.invoke({"field": "assignee", "value": "ZZZZ_NONEXISTENT_PERSON_999"})
+    assert "No tickets found" in result
+
+
+# ── calculate_metrics — invalid metric_type ──────────────────────────────────
+
+@pytest.mark.unit
+def test_calculate_metrics_invalid_type():
+    """calculate_metrics should error on unsupported metric_type."""
+    result = calculate_metrics.invoke({"metric_type": "foobar"})
+    assert "Error" in result
+    assert "not supported" in result

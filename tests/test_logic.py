@@ -198,3 +198,27 @@ class TestValidateQueryInjection:
         valid, reason = validate_query(evil_payload)
         assert not valid
         assert "3000" in reason
+
+
+# ── mask_api_key ────────────────────────────────────────────────────────────
+
+from services.logic import mask_api_key
+
+
+def test_mask_api_key_normal():
+    """mask_api_key should show first 4 and last 4 with asterisks."""
+    result = mask_api_key("sk-abc123def456ghi789")
+    assert result.startswith("sk-a")
+    assert result.endswith("i789")
+    assert "*" in result
+
+
+def test_mask_api_key_empty():
+    """mask_api_key with empty string should return empty string."""
+    assert mask_api_key("") == ""
+
+
+def test_mask_api_key_short():
+    """mask_api_key with key <= 8 chars should return all asterisks."""
+    assert mask_api_key("abc123") == "******"
+    assert mask_api_key("12345678") == "********"

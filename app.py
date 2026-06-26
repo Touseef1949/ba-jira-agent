@@ -21,7 +21,7 @@ from services.error_logging import log_error
 st.set_page_config(
     page_title="BA Jira Agent",
     page_icon="🤖",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="auto",
 )
 
@@ -61,7 +61,8 @@ html { scroll-behavior: smooth; }
 .stApp { background: var(--bg); color: var(--text); }
 header[data-testid="stHeader"] { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
-.block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1080px; }
+.block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1080px !important; }
+.stMain .block-container { max-width: 1080px !important; }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] { background: var(--bg-2); border-right: 1px solid var(--border); }
