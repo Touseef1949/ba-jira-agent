@@ -212,7 +212,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
   }
 
   /* ── FAB — sidebar toggle button ── */
-  button[data-testid="stExpandSidebarButton"] {
+  .stApp button[data-testid="stExpandSidebarButton"] {
     position: fixed !important; top: 0.75rem !important; left: 0.75rem !important;
     z-index: 10000 !important;
     width: 44px !important; height: 44px !important;
@@ -223,7 +223,7 @@ div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !im
     background: var(--bg) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
   }
-  button[data-testid="stExpandSidebarButton"] svg { width: 22px !important; height: 22px !important; }
+  .stApp button[data-testid="stExpandSidebarButton"] svg { width: 22px !important; height: 22px !important; }
 
   /* ── Main content ── */
   [data-testid="stAppViewContainer"] .block-container {
