@@ -17,6 +17,11 @@ load_dotenv(ENV_PATH, override=True)
 # ── API Keys ──────────────────────────────────────────────────────────────────
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
+# ── Jira Config ───────────────────────────────────────────────────────────────
+JIRA_URL = os.getenv("JIRA_URL", "")
+JIRA_PAT = os.getenv("JIRA_PAT", "")
+JIRA_EMAIL = os.getenv("JIRA_EMAIL", "")
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR = os.path.join(PROJECT_DIR, "data")
 JIRA_EXPORT_PATH = os.path.join(DATA_DIR, "jira_export.json")

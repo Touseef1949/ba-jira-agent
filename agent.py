@@ -12,6 +12,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
 from tools import (
+    configure_tools,
     load_tickets,
     filter_tickets,
     search_tickets,
@@ -62,6 +63,25 @@ agent = create_react_agent(
 
 # Alias for compatibility
 executor = agent
+
+
+def get_agent(data_source: str = "mock", jira_config: dict | None = None):
+    """
+    Create a fresh LangGraph ReAct agent configured for mock or live Jira data.
+
+    Args:
+        data_source: Either "mock" or "jira".
+        jira_config: Jira connection configuration for live Jira mode.
+
+    Returns:
+        A compiled LangGraph StateGraph.
+    """
+    configure_tools(data_source, jira_config)
+    return create_react_agent(
+        model=llm,
+        tools=tools,
+        prompt=SYSTEM_PROMPT,
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

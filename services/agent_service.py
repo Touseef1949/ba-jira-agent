@@ -10,17 +10,20 @@ import time
 from pathlib import Path
 
 from agent import agent as _agent
+from core.jira_config import DEFAULT_JQL, JIRA_MAX_RESULTS
 from core.models import AgentResult, DashboardMetrics
 from services.error_logging import log_error, log_latency
 from services.logic import compute_metrics, validate_query
 
 
-def run_agent_query(query: str) -> dict:
+def run_agent_query(query: str, data_source: str = "mock", jira_config: dict | None = None) -> dict:
     """
     Run the LangGraph ReAct agent with a natural-language query.
 
     Args:
         query: Natural language query about the Jira backlog.
+        data_source: "mock" for JSON data or "jira" for live Jira.
+        jira_config: Jira connection configuration for live Jira mode.
 
     Returns:
         dict with keys:
@@ -38,7 +41,13 @@ def run_agent_query(query: str) -> dict:
 
     start = time.monotonic()
     try:
-        result = _agent.invoke({"messages": [{"role": "user", "content": query}]})
+        active_agent = _agent
+        if (data_source or "mock").lower() != "mock" or jira_config is not None:
+            from agent import get_agent
+
+            active_agent = get_agent(data_source=data_source, jira_config=jira_config)
+
+        result = active_agent.invoke({"messages": [{"role": "user", "content": query}]})
         latency_ms = round((time.monotonic() - start) * 1000, 1)
         log_latency("run_agent_query", latency_ms)
 
@@ -93,14 +102,29 @@ def run_agent_query(query: str) -> dict:
         }
 
 
-def get_all_tickets() -> list[dict]:
+def get_all_tickets(data_source: str = "mock", jira_config: dict | None = None) -> list[dict]:
     """
-    Load all tickets from the Jira export JSON file.
+    Load all normalized tickets from mock JSON or live Jira.
 
     Returns:
         List of ticket dictionaries.
     """
     try:
+        if (data_source or "mock").lower() == "jira":
+            if not jira_config:
+                return []
+            from services import jira_client
+
+            issues = jira_client.fetch_issues(
+                jira_config.get("jira_url", ""),
+                jira_config.get("pat", ""),
+                jira_config.get("email", ""),
+                jql=jira_config.get("jql", DEFAULT_JQL),
+                max_results=jira_config.get("max_results", JIRA_MAX_RESULTS),
+                start_at=jira_config.get("start_at", 0),
+            )
+            return [jira_client.map_jira_issue_to_ticket(issue) for issue in issues]
+
         data_path = Path(__file__).resolve().parent.parent / "data" / "jira_export.json"
         with open(data_path, "r") as f:
             return json.load(f)
@@ -109,7 +133,7 @@ def get_all_tickets() -> list[dict]:
         return []
 
 
-def get_metrics() -> dict:
+def get_metrics(data_source: str = "mock", jira_config: dict | None = None) -> dict:
     """
     Calculate summary metrics for the dashboard cards.
 
@@ -121,7 +145,7 @@ def get_metrics() -> dict:
             - open_bugs: Count of Bug-type tickets with status 'Open'.
     """
     try:
-        tickets = get_all_tickets()
+        tickets = get_all_tickets(data_source=data_source, jira_config=jira_config)
         metrics: DashboardMetrics = compute_metrics(tickets)
         return {
             "total": metrics.total,
