@@ -9,13 +9,50 @@ from collections import Counter
 
 from langchain.tools import tool
 
+from core.jira_config import DEFAULT_JQL, JIRA_MAX_RESULTS
+
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "jira_export.json")
+_data_source = "mock"
+_jira_client_config = None
+
+
+def configure_tools(data_source, jira_config=None):
+    """Configure tool data loading for mock JSON data or live Jira data."""
+    global _data_source, _jira_client_config
+    source = (data_source or "mock").lower()
+    _data_source = "jira" if source == "jira" else "mock"
+    _jira_client_config = dict(jira_config or {}) if jira_config else None
 
 
 def _load_all_tickets():
-    """Helper: load and return all tickets from the JSON file."""
+    """Helper: load and return all normalized tickets from the configured source."""
+    if _data_source == "jira":
+        if not _jira_client_config:
+            raise RuntimeError("Jira tools are configured without Jira credentials.")
+        try:
+            from services import jira_client
+        except ImportError as exc:
+            raise RuntimeError("Jira client dependencies are not available.") from exc
+
+        try:
+            issues = jira_client.fetch_issues(
+                _jira_client_config.get("jira_url", ""),
+                _jira_client_config.get("pat", ""),
+                _jira_client_config.get("email", ""),
+                jql=_jira_client_config.get("jql", DEFAULT_JQL),
+                max_results=_jira_client_config.get("max_results", JIRA_MAX_RESULTS),
+                start_at=_jira_client_config.get("start_at", 0),
+            )
+            return [jira_client.map_jira_issue_to_ticket(issue) for issue in issues]
+        except getattr(jira_client, "JiraAPIError", Exception) as exc:
+            raise RuntimeError(f"Jira API error: {exc}") from exc
+
     with open(DATA_PATH, "r") as f:
         return json.load(f)
+
+
+def _format_ticket_load_error(exc):
+    return f"Error loading tickets from {_data_source} data source: {exc}"
 
 
 @tool
@@ -26,7 +63,10 @@ def load_tickets() -> str:
     assignee, story_points, sprint, labels, created, and description.
     Use this tool when you need to see the full backlog or a comprehensive listing.
     """
-    tickets = _load_all_tickets()
+    try:
+        tickets = _load_all_tickets()
+    except Exception as exc:
+        return _format_ticket_load_error(exc)
     # Return each ticket as a compact single-line dict for LLM readability
     output_lines = [f"Total tickets: {len(tickets)}\n"]
     for t in tickets:
@@ -56,7 +96,10 @@ def filter_tickets(field: str, value: str) -> str:
             f"Valid fields: {', '.join(sorted(valid_fields))}"
         )
 
-    tickets = _load_all_tickets()
+    try:
+        tickets = _load_all_tickets()
+    except Exception as exc:
+        return _format_ticket_load_error(exc)
     value_lower = value.lower()
     results = []
 
@@ -96,7 +139,10 @@ def search_tickets(query: str) -> str:
     Use this for open-ended searching (e.g., find all tickets mentioning 'Slack'
     or 'CORS') when you don't know the exact field value to filter on.
     """
-    tickets = _load_all_tickets()
+    try:
+        tickets = _load_all_tickets()
+    except Exception as exc:
+        return _format_ticket_load_error(exc)
     query_lower = query.lower()
     results = []
 
@@ -151,7 +197,10 @@ def calculate_metrics(metric_type: str = "all") -> str:
             f"Valid types: {', '.join(sorted(valid_types))}"
         )
 
-    tickets = _load_all_tickets()
+    try:
+        tickets = _load_all_tickets()
+    except Exception as exc:
+        return _format_ticket_load_error(exc)
     output_parts = []
 
     if mt in ("summary", "all"):

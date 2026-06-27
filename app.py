@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from services.agent_service import get_all_tickets, get_metrics, run_agent_query
+from services import auth_service
 from services.error_logging import log_error
 
 # ── Page Config ───────────────────────────────────────────────────────────────
@@ -180,6 +181,23 @@ div.stButton > button[kind="primary"] {
 }
 div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !important; }
 
+/* ── Jira Connection Section ── */
+.jira-connection-section {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 1.2rem 1.5rem; margin-bottom: 1.2rem;
+  box-shadow: var(--shadow);
+}
+.jira-connected-badge {
+  display: inline-block; background: #1DB954; color: #FFFFFF;
+  font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.75rem;
+  border-radius: 999px; margin-bottom: 0.5rem;
+}
+.jira-disconnected-badge {
+  display: inline-block; background: var(--panel-softer); color: var(--muted);
+  font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.75rem;
+  border-radius: 999px; margin-bottom: 0.5rem;
+}
+
 /* ── Footer ── */
 .app-footer { text-align: center; color: var(--muted-2); font-size: 0.75rem; padding: 1.5rem 0 0.5rem 0; border-top: 1px solid var(--border); margin-top: 2rem; }
 
@@ -245,6 +263,77 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ── Live Jira Connection ──────────────────────────────────────────────────────
+if "jira_config" not in st.session_state:
+    st.session_state.jira_config = None
+if "jira_connection_user" not in st.session_state:
+    st.session_state.jira_connection_user = ""
+
+st.markdown('<div class="jira-connection-section">', unsafe_allow_html=True)
+use_live_jira = st.toggle("🔌 Connect to Live Jira", value=False, key="use_live_jira")
+
+if use_live_jira:
+    current_user = st.session_state.get("jira_connection_user", "")
+    if st.session_state.get("jira_config") and current_user:
+        st.markdown(
+            f'<span class="jira-connected-badge">🔗 Live Jira · Connected as {current_user}</span>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"API token: {auth_service.mask_pat(st.session_state.jira_config.get('pat', ''))}"
+        )
+    else:
+        st.markdown(
+            '<span class="jira-disconnected-badge">🔌 Live Jira · Not connected</span>',
+            unsafe_allow_html=True,
+        )
+
+    jira_url = st.text_input(
+        "Jira URL",
+        placeholder="https://your-domain.atlassian.net",
+        key="jira_url",
+    )
+    jira_email = st.text_input(
+        "Email",
+        placeholder="you@company.com",
+        key="jira_email",
+    )
+    jira_pat = st.text_input(
+        "API Token",
+        type="password",
+        placeholder="Your Jira PAT",
+        key="jira_pat",
+    )
+
+    if st.button("🔍 Test Connection", key="test_jira_connection"):
+        result = auth_service.validate_jira_connection(jira_url, jira_pat, jira_email)
+        if result.get("connected"):
+            normalized_url = jira_url.strip()
+            if normalized_url and not normalized_url.startswith(("http://", "https://")):
+                normalized_url = f"https://{normalized_url}"
+            st.session_state.jira_config = {
+                "jira_url": normalized_url.rstrip("/"),
+                "email": jira_email.strip(),
+                "pat": jira_pat,
+            }
+            st.session_state.jira_connection_user = result.get("user", "Jira user")
+            st.success(f"✅ Connected as {st.session_state.jira_connection_user}")
+        else:
+            st.session_state.jira_config = None
+            st.session_state.jira_connection_user = ""
+            st.error(f"❌ {result.get('error', 'Connection failed.')}")
+else:
+    st.markdown(
+        '<span class="jira-disconnected-badge">📦 Mock Data</span>',
+        unsafe_allow_html=True,
+    )
+st.markdown("</div>", unsafe_allow_html=True)
+
+active_jira_config = st.session_state.get("jira_config") if use_live_jira else None
+data_source = "jira" if use_live_jira and active_jira_config else "mock"
+mode_badge = "🔗 Live Jira" if data_source == "jira" else "📦 Mock Data"
+st.sidebar.markdown(f"**Mode:** {mode_badge}")
+
 # ── About & Example Queries ────────────────────────────────────────────────────
 with st.expander("ℹ️ About", expanded=False):
     st.markdown(
@@ -279,7 +368,7 @@ for i, q in enumerate(example_queries):
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Metrics Dashboard ─────────────────────────────────────────────────────────
-metrics = get_metrics()
+metrics = get_metrics(data_source=data_source, jira_config=active_jira_config)
 m1, m2, m3, m4 = st.columns(4)
 with m1:
     st.markdown(
@@ -357,7 +446,11 @@ if submitted and st.session_state.get("query_input", "").strip():
 
     with st.spinner("🤔 Agent is reasoning... this may take 10–30 seconds"):
         try:
-            result = run_agent_query(st.session_state.query_input.strip())
+            result = run_agent_query(
+                st.session_state.query_input.strip(),
+                data_source=data_source,
+                jira_config=active_jira_config,
+            )
             st.session_state.query_response = result["answer"]
             st.session_state.query_trace = result["trace"]
         except Exception as exc:
@@ -413,7 +506,7 @@ if "query_response" in st.session_state and st.session_state.query_response:
 st.markdown('<div class="ticket-card">', unsafe_allow_html=True)
 st.markdown("### 📊 Jira Backlog Tickets")
 
-tickets = get_all_tickets()
+tickets = get_all_tickets(data_source=data_source, jira_config=active_jira_config)
 if tickets:
     df = pd.DataFrame(tickets)
     # Reorder and select columns for display
