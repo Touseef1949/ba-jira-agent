@@ -28,7 +28,7 @@ JIRA_EXPORT_PATH = os.path.join(DATA_DIR, "jira_export.json")
 LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 
 # ── LLM Config ────────────────────────────────────────────────────────────────
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 

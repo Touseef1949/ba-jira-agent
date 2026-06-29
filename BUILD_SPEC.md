@@ -9,7 +9,7 @@ A LangChain ReAct agent that reads a mock Jira export (JSON), summarizes tickets
 ## Stack
 - Python 3.13 (/usr/local/bin/python3)
 - LangChain (langchain, langchain-openai)
-- DeepSeek API (model: deepseek-chat, base_url: https://api.deepseek.com/v1)
+- DeepSeek API (model: deepseek-v4-flash, base_url: https://api.deepseek.com/v1)
 - Mock Jira data already at data/jira_export.json (20 tickets)
 
 ## Agent Tools (4 tools)
@@ -56,7 +56,7 @@ Each tool must be decorated with @tool from langchain.tools. Include docstrings 
 
 ## agent.py — Detailed
 - Load DEEPSEEK_API_KEY from .env via dotenv
-- Create ChatOpenAI(model="deepseek-chat", base_url="https://api.deepseek.com/v1", temperature=0)
+- Create ChatOpenAI(model="deepseek-v4-flash", base_url="https://api.deepseek.com/v1", temperature=0)
 - Pull ReAct prompt from langchain hub: hub.pull("hwchase17/react")
 - Create agent: create_react_agent(llm, tools, prompt)
 - Create executor: AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=10, handle_parsing_errors=True)

@@ -31,7 +31,7 @@ class TestConfig:
         assert APP_ICON == "🤖"
 
     def test_llm_model_default(self):
-        assert LLM_MODEL == "deepseek-chat"
+        assert LLM_MODEL == "deepseek-v4-flash"
 
     def test_llm_base_url_default(self):
         assert LLM_BASE_URL == "https://api.deepseek.com/v1"

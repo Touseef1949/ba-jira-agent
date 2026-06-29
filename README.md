@@ -14,7 +14,7 @@ A LangChain ReAct agent that analyzes Jira backlogs — reasons about which tool
 
 ## Features
 - 4 custom LangChain tools (load, filter, search, metrics)
-- DeepSeek LLM via OpenAI-compatible API
+- DeepSeek LLM via OpenAI-compatible API (`deepseek-v4-flash`)
 - LangGraph ReAct orchestration
 - 20 mock Jira tickets (bugs, stories, epics)
 - Streamlit web UI matching BA Assistant design system
@@ -23,5 +23,5 @@ A LangChain ReAct agent that analyzes Jira backlogs — reasons about which tool
 ## Tech Stack
 - Python 3.13
 - LangChain 1.3.x + LangGraph
-- DeepSeek API
+- DeepSeek API (`deepseek-v4-flash`)
 - Streamlit

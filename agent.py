@@ -34,7 +34,7 @@ if not DEEPSEEK_API_KEY:
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 llm = ChatOpenAI(
-    model="deepseek-chat",
+    model="deepseek-v4-flash",
     base_url="https://api.deepseek.com/v1",
     api_key=DEEPSEEK_API_KEY,
     temperature=0,
