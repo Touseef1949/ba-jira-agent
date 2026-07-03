@@ -43,7 +43,10 @@ def make_metrics():
     return [
         AnswerRelevancyMetric(model=_eval_model, threshold=0.7),
         FaithfulnessMetric(model=_eval_model, threshold=0.7),
-        ToxicityMetric(model=_eval_model, threshold=0.7),
+        # Toxicity score is 0-1, higher = more toxic; pass means score <= threshold.
+        # 0.3 matches the documented target (see Evaluation Results note) - 0.7 would
+        # barely test anything.
+        ToxicityMetric(model=_eval_model, threshold=0.3),
     ]
 
 
@@ -58,6 +61,11 @@ def evaluate(query, ground_truth, retrieval_context=None):
 
     Returns:
         (actual_answer, test_case, scores_dict)
+
+    Raises:
+        AssertionError if any metric misses its threshold or fails to measure -
+        a quality regression (e.g. a model swap tanking relevancy) fails the
+        suite instead of only showing up in the printed score line.
     """
     result = run_agent_query(query)
     actual = result["answer"]
@@ -71,20 +79,30 @@ def evaluate(query, ground_truth, retrieval_context=None):
     )
 
     scores = {}
+    failures = []
     for metric in make_metrics():
+        name = metric.__class__.__name__
         try:
             metric.measure(test_case)
-            scores[metric.__class__.__name__] = round(metric.score, 3)
-            scores[f"{metric.__class__.__name__}_reason"] = getattr(metric, "reason", "")[:200]
+            scores[name] = round(metric.score, 3)
+            scores[f"{name}_reason"] = getattr(metric, "reason", "")[:200]
+            if not metric.success:
+                failures.append(
+                    f"{name} scored {scores[name]} (threshold {metric.threshold}): "
+                    f"{scores[f'{name}_reason']}"
+                )
         except Exception as exc:
-            scores[metric.__class__.__name__] = None
-            scores[f"{metric.__class__.__name__}_error"] = str(exc)[:200]
+            scores[name] = None
+            scores[f"{name}_error"] = str(exc)[:200]
+            failures.append(f"{name} errored: {scores[f'{name}_error']}")
 
     # Print scores inline so they appear in pytest -s output
     score_line = " | ".join(
         f"{k}: {v}" for k, v in scores.items() if not k.endswith("_reason") and not k.endswith("_error")
     )
     print(f"\n  [DEEPEVAL] {score_line}")
+
+    assert not failures, "DeepEval metric threshold failure(s):\n  " + "\n  ".join(failures)
 
     return actual, test_case, scores
 
