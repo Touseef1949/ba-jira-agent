@@ -3,6 +3,7 @@ omit =
     */run.py
     */app.py
     */tests/*
+    */eval/*
     */__pycache__/*
     */venv/*
 
