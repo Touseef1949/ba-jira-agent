@@ -17,7 +17,12 @@ from tools import (
     filter_tickets,
     search_tickets,
     calculate_metrics,
+    load_skill,
+    use_skill_tool,
+    spawn_subagent,
+    _skill_registry,
 )
+from core.project_memory import load_project_memory
 
 # ── Load environment ──────────────────────────────────────────────────────────
 _project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -41,15 +46,68 @@ llm = ChatOpenAI(
 )
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
-tools = [load_tickets, filter_tickets, search_tickets, calculate_metrics]
+# Data tools + skill-layer tools: load_skill (progressive disclosure of procedures),
+# use_skill_tool (run a skill's bundled tools), spawn_subagent (delegate to a
+# single-skill specialist sub-agent).
+tools = [
+    load_tickets,
+    filter_tickets,
+    search_tickets,
+    calculate_metrics,
+    load_skill,
+    use_skill_tool,
+    spawn_subagent,
+]
 
 # ── System Prompt ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = (
+_BASE_PROMPT = (
     "You are a BA Assistant AI agent. You help Product Owners analyze Jira backlogs. "
     "You have tools to load tickets, filter them, search them, and calculate metrics. "
     "Always use tools to get data before answering. "
     "Provide structured, actionable summaries."
 )
+
+
+def build_system_prompt(registry=_skill_registry, memory_loader=load_project_memory) -> str:
+    """Compose the system prompt from base persona + project memory + skill catalog.
+
+    Progressive disclosure: only the skill *catalog* (name + description) is
+    injected here. The agent calls the ``load_skill`` tool to pull a skill's full
+    procedure on demand, keeping the base prompt small.
+    """
+    sections = [_BASE_PROMPT]
+
+    memory = memory_loader() if memory_loader else ""
+    if memory:
+        sections.append(
+            "## Project context (AGENT.md)\n"
+            "Persistent team context — honor it in every answer:\n\n" + memory
+        )
+
+    catalog = registry.catalog() if registry else ""
+    if catalog:
+        sections.append(
+            "## Available skills\n"
+            "These are reusable playbooks for multi-step BA tasks:\n\n"
+            f"{catalog}\n\n"
+            "Use a skill ONLY when the user asks for a full report, analysis, forecast, "
+            "or multi-step triage. In that case call the `load_skill` tool with the "
+            "skill's name FIRST, then follow its procedure using your data tools.\n"
+            "Do NOT use a skill for a direct factual question — a count, a single lookup, "
+            "'how many', 'which tickets', 'find X', 'who is assigned'. Answer those "
+            "concisely with the data tools alone, and keep the answer scoped to exactly "
+            "what was asked (no extra risk analysis or recommendations unless requested).\n"
+            "Advanced (report/analysis work only): after load_skill, a skill may list "
+            "bundled tools — run one with `use_skill_tool(skill, tool)`. For a heavy, "
+            "self-contained part of a larger analysis, delegate it to a specialist with "
+            "`spawn_subagent(skill, task)`."
+        )
+
+    return "\n\n".join(sections)
+
+
+# Composed once at import for the module-level default agent.
+SYSTEM_PROMPT = build_system_prompt()
 
 # ── Agent (compiled LangGraph ReAct agent) ────────────────────────────────────
 # LangChain 1.3.x: create_react_agent returns a compiled StateGraph, not AgentExecutor.

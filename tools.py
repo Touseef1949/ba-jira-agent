@@ -10,6 +10,10 @@ from collections import Counter
 from langchain.tools import tool
 
 from core.jira_config import DEFAULT_JQL, JIRA_MAX_RESULTS
+from core.skills import SkillRegistry
+
+# Shared skill registry — discovers skills/*/SKILL.md once at import time.
+_skill_registry = SkillRegistry()
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "jira_export.json")
 _data_source = "mock"
@@ -258,3 +262,95 @@ def calculate_metrics(metric_type: str = "all") -> str:
             )
 
     return "\n".join(output_parts)
+
+
+@tool
+def load_skill(skill_name: str) -> str:
+    """
+    Load the full step-by-step procedure for a named BA skill.
+    Your system prompt lists a catalog of available skills (name + description).
+    When a user query matches one of those skills, call this tool with that
+    skill's name BEFORE answering, read the returned procedure, then follow it
+    using your data tools (load_tickets, filter_tickets, search_tickets,
+    calculate_metrics). If no skill fits, answer directly with the data tools.
+    """
+    body = _skill_registry.get_body(skill_name)
+    if body is None:
+        available = ", ".join(s.name for s in _skill_registry.list_skills()) or "(none)"
+        return (
+            f"No skill named '{skill_name}'. Available skills: {available}. "
+            f"If none fit, answer directly using the data tools."
+        )
+    # Progressive disclosure of bundled tools: only revealed once the skill loads.
+    bundled = _skill_registry.get_skill_tools(skill_name)
+    note = ""
+    if bundled:
+        lines = "\n".join(f"- {n}" for n in sorted(bundled))
+        note = (
+            "\n\n## Bundled tools\n"
+            "This skill ships extra tools. Run one with "
+            f"`use_skill_tool('{skill_name}', '<tool_name>')`:\n{lines}"
+        )
+    return f"# Skill: {skill_name}\n\n{body}{note}"
+
+
+@tool
+def use_skill_tool(skill_name: str, tool_name: str, arg: str = "") -> str:
+    """
+    Run a tool bundled with a skill (the ones listed under "Bundled tools" in the
+    output of load_skill). Provide the skill name, the tool name, and an optional
+    string argument. Only call this after load_skill has revealed the skill's
+    bundled tools.
+    """
+    bundled = _skill_registry.get_skill_tools(skill_name)
+    fn = bundled.get(tool_name)
+    if fn is None:
+        available = ", ".join(sorted(bundled)) or "(none)"
+        return (
+            f"No bundled tool '{tool_name}' for skill '{skill_name}'. "
+            f"Available: {available}."
+        )
+    try:
+        import inspect
+
+        params = inspect.signature(fn).parameters
+        result = fn(arg) if params else fn()
+        return str(result)
+    except Exception as exc:
+        return f"Error running {skill_name}.{tool_name}: {exc}"
+
+
+@tool
+def spawn_subagent(skill_name: str, task: str) -> str:
+    """
+    Delegate a focused sub-task to a specialist sub-agent that runs a single skill.
+    The sub-agent gets ONLY that skill's procedure plus the data tools, reasons on
+    `task` in its own loop, and returns its finished result. Use this to fan out a
+    heavy, self-contained part of a larger analysis (e.g. delegate a velocity
+    forecast while you handle triage). Do NOT use it for simple factual questions.
+    """
+    body = _skill_registry.get_body(skill_name)
+    if body is None:
+        available = ", ".join(s.name for s in _skill_registry.list_skills()) or "(none)"
+        return f"No skill named '{skill_name}'. Available skills: {available}."
+    try:
+        # Lazy imports break the import cycle with agent.py (which imports this module).
+        from langgraph.prebuilt import create_react_agent
+        from agent import llm
+
+        sub_prompt = (
+            "You are a specialist BA sub-agent. Complete the task by following this "
+            "skill procedure exactly, using the data tools. Return only the finished "
+            "result — no preamble.\n\n"
+            f"{body}"
+        )
+        # Sub-agents get the data tools only — never load_skill/spawn_subagent (no recursion).
+        sub_tools = [load_tickets, filter_tickets, search_tickets, calculate_metrics]
+        sub_agent = create_react_agent(model=llm, tools=sub_tools, prompt=sub_prompt)
+        result = sub_agent.invoke({"messages": [{"role": "user", "content": task}]})
+        messages = result.get("messages", [])
+        if messages and hasattr(messages[-1], "content"):
+            return f"[sub-agent:{skill_name}]\n{messages[-1].content}"
+        return "Sub-agent returned no output."
+    except Exception as exc:
+        return f"Sub-agent error for '{skill_name}': {exc}"

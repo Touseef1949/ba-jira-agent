@@ -166,7 +166,7 @@ def test_query_submit_with_jira_mode():
     _rerun(at, agent_service, _)
     at.text_area(key="query_input").set_value("Show open bugs")
     _rerun(at, agent_service, _)
-    at.button[7].click()
+    at.button(key="run_agent").click()
     _rerun(at, agent_service, _)
     kwargs = agent_service.run_agent_query.call_args.kwargs
     assert kwargs["data_source"] == "jira"

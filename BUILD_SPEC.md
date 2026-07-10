@@ -93,3 +93,20 @@ DEEPSEEK_API_KEY=your-deepseek-api-key-here
 - All tool functions must return strings (not dicts) — the LLM needs readable text
 - Tool docstrings must be clear — the LLM decides which tool to call based on them
 - handle_parsing_errors=True on AgentExecutor — DeepSeek may occasionally format ReAct output incorrectly
+
+## Skill Layer (added)
+
+Claude-Code-style skills sit on top of the existing ReAct runtime — no runtime swap.
+
+- `skills/<slug>/SKILL.md` — YAML frontmatter (`name`, `description`, `when_to_use`, `command`) + markdown procedure body.
+- `core/skills.py::SkillRegistry` — discovers skills, parses frontmatter (pyyaml), exposes `catalog()`, `get_body()`, `resolve_command()`, `expand_slash_command()`.
+- `tools.py::load_skill(skill_name)` — returns a skill's full procedure on demand (progressive disclosure) and surfaces the skill's bundled tools if any.
+- `tools.py::use_skill_tool(skill, tool, arg)` — dispatches to a skill's bundled `tools.py` functions (revealed only after load_skill).
+- `tools.py::spawn_subagent(skill, task)` — runs a fresh single-skill ReAct sub-agent (data tools only, no recursion) and returns its result. Lazy-imports `agent.llm` to avoid an import cycle.
+- `core/skills.py::SkillRegistry` — discovers skills, parses frontmatter (pyyaml), exposes `catalog()`, `get_body()`, `resolve_command()`, `expand_slash_command()`, `get_skill_tools()`, `has_tools()`.
+- `agent.py::build_system_prompt()` — composes base persona + `AGENT.md` project memory + the skill catalog. `SYSTEM_PROMPT` is built from it at import. Skills are gated to report/analysis intent; narrow factual questions are answered directly by the data tools.
+- `core/project_memory.py::load_project_memory()` — injects `AGENT.md` (the `CLAUDE.md` analogue) when present.
+- `app.py` — 🧩 Skills sidebar panel + `/command` launcher buttons; slash input is expanded via `SkillRegistry.expand_slash_command()` before `run_agent_query`.
+- Agent tool set (7): the 4 data tools + `load_skill`, `use_skill_tool`, `spawn_subagent`.
+
+Add a skill by creating `skills/<slug>/SKILL.md` (optionally `skills/<slug>/tools.py` for bundled tools) — no core code change needed. Tests live in `tests/test_skills.py`.

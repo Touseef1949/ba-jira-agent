@@ -14,6 +14,10 @@ import streamlit as st
 from services.agent_service import get_all_tickets, get_metrics, run_agent_query
 from services import auth_service
 from services.error_logging import log_error
+from core.skills import SkillRegistry
+
+# Skill registry powers the 🧩 Skills panel and /slash commands.
+skill_registry = SkillRegistry()
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -334,17 +338,33 @@ data_source = "jira" if use_live_jira and active_jira_config else "mock"
 mode_badge = "🔗 Live Jira" if data_source == "jira" else "📦 Mock Data"
 st.sidebar.markdown(f"**Mode:** {mode_badge}")
 
+# ── Skills panel (progressive-disclosure catalog) ──────────────────────────────
+_skills = skill_registry.list_skills()
+if _skills:
+    st.sidebar.markdown("### 🧩 Skills")
+    st.sidebar.caption(
+        "Reusable BA playbooks. The agent loads a skill's full procedure on demand "
+        "(watch for `load_skill` in the trace)."
+    )
+    for _sk in _skills:
+        cmd = f"`{_sk.command}` " if _sk.command else ""
+        st.sidebar.markdown(f"**{cmd}{_sk.name}**  \n{_sk.description}")
+
 # ── About & Example Queries ────────────────────────────────────────────────────
 with st.expander("ℹ️ About", expanded=False):
     st.markdown(
         """
         **BA Jira Agent** wraps a LangGraph ReAct agent in a Streamlit UI.
-        The agent reasons about Jira backlogs using 4 custom tools:
+        The agent reasons about Jira backlogs using 4 data tools:
 
         - `load_tickets` — full backlog listing
         - `filter_tickets` — filter by field/value
         - `search_tickets` — keyword search
         - `calculate_metrics` — sprint & backlog stats
+
+        …plus a **skill layer** (Claude-Code-style): a `load_skill` tool pulls a
+        reusable playbook's full procedure on demand — progressive disclosure you
+        can watch happen in the trace below.
 
         Built with LangChain, LangGraph, and DeepSeek Chat API.
         """
@@ -365,6 +385,17 @@ for i, q in enumerate(example_queries):
         if st.button(q, key=f"example_{i}", width="stretch"):
             st.session_state.query = q
             st.session_state[f"query_input"] = q
+
+# ── Skill launchers (slash commands) ───────────────────────────────────────────
+if _skills:
+    st.caption("🧩 **Run a skill:**")
+    skill_cols = st.columns(min(len(_skills), 4))
+    for i, _sk in enumerate(_skills):
+        label = _sk.command or f"/{_sk.slug}"
+        with skill_cols[i % len(skill_cols)]:
+            if st.button(label, key=f"skill_{_sk.slug}", width="stretch"):
+                st.session_state.query = label
+                st.session_state["query_input"] = label
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Metrics Dashboard ─────────────────────────────────────────────────────────
@@ -434,7 +465,7 @@ query = st.text_area(
 
 submit_col, clear_col = st.columns([1, 1])
 with submit_col:
-    submitted = st.button("🚀 Run Agent", width="stretch", type="primary")
+    submitted = st.button("🚀 Run Agent", width="stretch", type="primary", key="run_agent")
 with clear_col:
     if st.button("🗑️ Clear", width="stretch"):
         st.session_state.query_response = None
@@ -446,8 +477,11 @@ if submitted and st.session_state.get("query_input", "").strip():
 
     with st.spinner("🤔 Agent is reasoning... this may take 10–30 seconds"):
         try:
+            query_to_run = skill_registry.expand_slash_command(
+                st.session_state.query_input.strip()
+            )
             result = run_agent_query(
-                st.session_state.query_input.strip(),
+                query_to_run,
                 data_source=data_source,
                 jira_config=active_jira_config,
             )

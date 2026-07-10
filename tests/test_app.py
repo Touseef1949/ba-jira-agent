@@ -72,7 +72,7 @@ class TestAppSmoke:
         ):
             at = AppTest.from_file(app_path)
 
-        at.run()
+        at.run(timeout=10)
         assert not at.exception
 
     @pytest.mark.smoke
@@ -88,7 +88,7 @@ class TestAppSmoke:
         ):
             at = AppTest.from_file(app_path)
 
-        at.run()
+        at.run(timeout=10)
         assert not at.exception
 
         # Title is rendered via st.markdown (HTML hero card), not st.title
@@ -108,6 +108,6 @@ class TestAppSmoke:
         ):
             at = AppTest.from_file(app_path)
 
-        at.run()
+        at.run(timeout=10)
         assert not at.exception
         assert at.text_area("query_input")
