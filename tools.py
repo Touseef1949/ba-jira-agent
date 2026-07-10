@@ -1,6 +1,9 @@
 """
-BA Jira Agent Tools — LangChain @tool functions for mock Jira data analysis.
-All tools read from data/jira_export.json and return formatted string output.
+BA Jira Agent Tools — LangChain @tool functions.
+The four data tools (load/filter/search/metrics) read from the configured source
+(mock data/jira_export.json or live Jira) and return formatted string output; the
+skill-layer tools (load_skill, use_skill_tool, spawn_subagent) drive the
+progressive-disclosure skill system.
 """
 
 import json

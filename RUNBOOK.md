@@ -4,12 +4,17 @@
 
 ```
 ba-jira-agent/
-├── app.py                    # Streamlit web UI (entry point)
-├── agent.py                  # LangGraph ReAct agent (DeepSeek LLM)
-├── tools.py                  # 4 @tool functions for Jira data
+├── app.py                    # Streamlit web UI (entry point) — Skills panel + /slash launchers
+├── agent.py                  # LangGraph ReAct agent (DeepSeek LLM) — builds the skill-aware prompt
+├── tools.py                  # data @tool functions + skill-layer tools (load_skill, use_skill_tool, spawn_subagent)
 ├── run.py                    # CLI runner for the agent
+├── AGENT.md                  # Project memory (CLAUDE.md analogue) — always injected into the prompt
 ├── core/
-│   └── config.py             # Config constants, safe_secret helper
+│   ├── config.py             # Config constants, safe_secret helper
+│   ├── skills.py             # SkillRegistry — discovers skills/, progressive disclosure, /slash commands
+│   └── project_memory.py     # Loads AGENT.md into the system prompt
+├── skills/                   # Claude-Code-style skills (one folder per skill)
+│   └── <slug>/SKILL.md       # Frontmatter + procedure (optional tools.py for bundled tools)
 ├── services/
 │   ├── agent_service.py      # Agent invocation wrapper (UI ↔ agent)
 │   └── error_logging.py      # Structured JSONL error logging
@@ -29,8 +34,8 @@ ba-jira-agent/
 User Query → app.py (Streamlit)
     → services/agent_service.py (run_agent_query)
         → agent.py (LangGraph ReAct agent)
-            → tools.py (4 @tool functions)
-                → data/jira_export.json
+            → tools.py (data tools + skill-layer tools)
+                → data/jira_export.json (or live Jira)
             ← tool results
         ← agent answer + trace
     ← {"answer": str, "trace": [...]}
@@ -43,8 +48,10 @@ User Query → app.py (Streamlit)
 |-----------|------|
 | **Streamlit UI** (`app.py`) | Web interface with hero card, query input, results, trace, ticket table, metrics |
 | **Agent Service** (`services/agent_service.py`) | Thin wrapper that invokes the LangGraph agent and normalizes output |
-| **LangGraph Agent** (`agent.py`) | ReAct agent backed by DeepSeek Chat API with 4 custom tools |
-| **Tools** (`tools.py`) | `load_tickets`, `filter_tickets`, `search_tickets`, `calculate_metrics` |
+| **LangGraph Agent** (`agent.py`) | ReAct agent backed by DeepSeek Chat API with 4 data tools + 3 skill-layer tools |
+| **Tools** (`tools.py`) | Data tools `load_tickets`, `filter_tickets`, `search_tickets`, `calculate_metrics`; skill tools `load_skill`, `use_skill_tool`, `spawn_subagent` |
+| **Skill Layer** (`core/skills.py`, `skills/`) | Progressive-disclosure playbooks (`skills/<slug>/SKILL.md`); `SkillRegistry` catalogs them and resolves `/slash` commands |
+| **Project Memory** (`core/project_memory.py`, `AGENT.md`) | Persistent team context (roster, cadence, definition-of-done) always injected into the prompt |
 | **Error Logging** (`services/error_logging.py`) | JSONL log at `logs/errors.jsonl` with timestamps, types, and tracebacks |
 | **Config** (`core/config.py`) | Centralized constants, env loading, and the `safe_secret()` helper |
 
@@ -218,6 +225,12 @@ Edit `data/jira_export.json` — it's a JSON array of ticket objects. Each ticke
 1. Add a new `@tool` function in `tools.py`
 2. Register it in `agent.py`'s `tools` list
 3. The agent automatically discovers and uses it
+
+### Adding a skill
+
+1. Create `skills/<slug>/SKILL.md` with YAML frontmatter (`name`, `description`, optional `when_to_use`, `command`) plus a markdown procedure body
+2. Optionally add `skills/<slug>/tools.py` — public functions become bundled tools the agent runs via `use_skill_tool`
+3. `SkillRegistry` discovers it on startup — no core code change needed. The name + description enter the prompt; the full procedure loads on demand via `load_skill`. If `command:` is set (e.g. `/velocity`), a slash launcher appears in the UI.
 
 ### Updating dependencies
 

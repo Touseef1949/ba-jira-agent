@@ -3,7 +3,8 @@ BA Jira Agent — Streamlit Web App.
 
 LangChain ReAct agent wrapper with BA Assistant design system.
 Provides a chat-style interface for querying a Jira backlog using
-a DeepSeek-powered AI agent with 4 custom tools.
+a DeepSeek-powered AI agent with 4 data tools plus a Claude-Code-style
+skill layer (skills panel + /slash launchers).
 """
 
 from datetime import datetime, timezone
