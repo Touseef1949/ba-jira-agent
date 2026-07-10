@@ -7,14 +7,17 @@ the SkillRegistry and its public functions become tools the agent can call via
 the skill is loaded (progressive disclosure).
 """
 
-import json
-import os
 
-_DATA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data",
-    "jira_export.json",
-)
+def _load_tickets() -> list[dict]:
+    """Return tickets from the agent's configured data source (mock or live Jira).
+
+    Routes through the main ``tools`` module so the forecast honors the same
+    ``configure_tools`` mock/Jira selection as the data tools, instead of always
+    reading the local mock export and silently serving mock forecasts in Live mode.
+    """
+    from tools import _load_all_tickets
+
+    return _load_all_tickets()
 
 
 def forecast_next_sprint(arg: str = "") -> str:
@@ -24,8 +27,7 @@ def forecast_next_sprint(arg: str = "") -> str:
     and projects the next sprint's capacity. Returns a text summary. ``arg`` is
     unused (accepted so the dispatcher can pass a string uniformly).
     """
-    with open(_DATA_PATH, "r", encoding="utf-8") as fh:
-        tickets = json.load(fh)
+    tickets = _load_tickets()
 
     sp_by_sprint: dict[str, int] = {}
     for t in tickets:

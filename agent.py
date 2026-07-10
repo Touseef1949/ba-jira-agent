@@ -22,7 +22,7 @@ from tools import (
     spawn_subagent,
     _skill_registry,
 )
-from core.project_memory import load_project_memory
+from core.project_memory import load_project_memory, render_memory_section
 
 # ── Load environment ──────────────────────────────────────────────────────────
 _project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,12 +77,9 @@ def build_system_prompt(registry=_skill_registry, memory_loader=load_project_mem
     """
     sections = [_BASE_PROMPT]
 
-    memory = memory_loader() if memory_loader else ""
-    if memory:
-        sections.append(
-            "## Project context (AGENT.md)\n"
-            "Persistent team context — honor it in every answer:\n\n" + memory
-        )
+    memory_section = render_memory_section(memory_loader)
+    if memory_section:
+        sections.append(memory_section)
 
     catalog = registry.catalog() if registry else ""
     if catalog:

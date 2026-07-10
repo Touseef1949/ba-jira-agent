@@ -337,12 +337,17 @@ def spawn_subagent(skill_name: str, task: str) -> str:
         # Lazy imports break the import cycle with agent.py (which imports this module).
         from langgraph.prebuilt import create_react_agent
         from agent import llm
+        from core.project_memory import render_memory_section
 
+        # Pass the same AGENT.md conventions the main agent honors, so the sub-agent
+        # applies the same definition-of-done, priority ladder, and roster.
+        memory_section = render_memory_section()
         sub_prompt = (
             "You are a specialist BA sub-agent. Complete the task by following this "
             "skill procedure exactly, using the data tools. Return only the finished "
             "result — no preamble.\n\n"
-            f"{body}"
+            + (f"{memory_section}\n\n" if memory_section else "")
+            + body
         )
         # Sub-agents get the data tools only — never load_skill/spawn_subagent (no recursion).
         sub_tools = [load_tickets, filter_tickets, search_tickets, calculate_metrics]

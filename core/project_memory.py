@@ -25,3 +25,19 @@ def load_project_memory(path: str | None = None) -> str:
             return fh.read().strip()
     except OSError:
         return ""
+
+
+def render_memory_section(memory_loader=load_project_memory) -> str:
+    """Render the injectable "Project context (AGENT.md)" block, or "" when empty.
+
+    Single source of truth for how project memory is presented to a model, shared
+    by the main agent's system prompt and by spawned sub-agents so both honor the
+    same persistent team conventions (definition-of-done, priority ladder, roster).
+    """
+    memory = memory_loader() if memory_loader else ""
+    if not memory:
+        return ""
+    return (
+        "## Project context (AGENT.md)\n"
+        "Persistent team context — honor it in every answer:\n\n" + memory
+    )
