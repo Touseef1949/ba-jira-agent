@@ -25,6 +25,57 @@ A LangChain ReAct agent that analyzes Jira backlogs — reasons about which tool
 - Streamlit web UI matching BA Assistant design system
 - Test suite: unit, integration, smoke/AppTest + a dedicated skill-layer suite (`tests/test_skills.py`)
 
+## Architecture
+
+**A progressive-disclosure _Agent Skills_ layer on a ReAct core** — the same shape
+Claude Code uses. It composes four well-known patterns:
+
+- **ReAct** (Reason → Act → Observe) as the base agent loop.
+- **Agent Skills with progressive disclosure** — only each skill's *name + description*
+  sits in the prompt; the full procedure is fetched on demand via `load_skill`.
+- **Orchestrator–workers** — the agent delegates a self-contained sub-task to a
+  single-skill specialist via `spawn_subagent` (Claude Code's Task-tool pattern).
+- **Project memory** — `AGENT.md` (the `CLAUDE.md` analogue) is always injected.
+
+```text
+        user query    "/velocity"   "give me a health report"   "how many bugs?"
+             |
+             v
+   +--------------------------------------------------------------------------+
+   |  Streamlit UI  (app.py)                                                  |
+   |  /slash launchers    .    Skills panel    .    ReAct trace viewer        |
+   +--------------------------------------------------------------------------+
+               |  expand_slash_command()      ( /velocity -> run the skill )
+               v
+   +--------------------------------------------------------------------------+
+   |  agent_service.run_agent_query()       validate . trace . latency        |
+   +--------------------------------------------------------------------------+
+               |
+               v
+   +--------------------------------------------------------------------------+
+   |  ReAct Agent    .    LangGraph  +  DeepSeek                              |
+   |                                                                          |
+   |  SYSTEM PROMPT =  base persona                                           |
+   |                 + AGENT.md project memory          <- always injected    |
+   |                 + SKILL CATALOG (name + one-line desc)   <- cheap        |
+   |                                                                          |
+   |     loop:    Think -->  Act -->  Observe  -->  (repeat until answer)     |
+   +--------------------------------------------------------------------------+
+      |
+      +-- data tools --->  load_tickets . filter_tickets . search_tickets .
+      |                    calculate_metrics   -->  jira_export.json / live Jira
+      |
+      +-- skill tools -->  load_skill(name) -------->  SkillRegistry (core/skills.py)
+      |                    use_skill_tool(skill,tool)     scans skills/*/
+      |                          |
+      |                          v
+      |                    skills/<slug>/SKILL.md    procedure      (loaded on demand)
+      |                    skills/<slug>/tools.py    bundled tools  (optional)
+      |
+      +-- delegate ----->  spawn_subagent(skill, task)
+                           `-->  fresh ReAct loop scoped to ONE skill + data tools
+```
+
 ## Skill layer
 
 A *skill* is a folder under `skills/` with a `SKILL.md` file: YAML frontmatter
