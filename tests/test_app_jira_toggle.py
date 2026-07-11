@@ -101,7 +101,8 @@ def test_toggle_shows_jira_fields_when_on():
 
 def test_jira_fields_hidden_when_toggle_off():
     at, _, _ = _run_app()
-    assert len(at.text_input) == 0
+    text_input_keys = {field.key for field in at.text_input}
+    assert {"jira_url", "jira_email", "jira_pat"}.isdisjoint(text_input_keys)
 
 
 def test_test_connection_success_shows_green_badge():

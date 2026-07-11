@@ -128,5 +128,5 @@ class TestAppSmoke:
         at.run(timeout=10)
         assert not at.exception
         markdown_texts = [str(m.value) for m in at.markdown]
-        assert any("Ask the agent" in text for text in markdown_texts)
+        assert any("What do you need to know?" in text for text in markdown_texts)
         assert at.button(key="guided_example_load")

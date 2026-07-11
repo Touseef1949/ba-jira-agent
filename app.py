@@ -1,11 +1,4 @@
-"""
-BA Jira Agent — Streamlit Web App.
-
-LangChain ReAct agent wrapper with BA Assistant design system.
-Provides a chat-style interface for querying a Jira backlog using
-a DeepSeek-powered AI agent with 4 data tools plus a Claude-Code-style
-skill layer (skills panel + /slash launchers).
-"""
+"""Production Streamlit interface for the BA Jira Agent."""
 
 from datetime import datetime, timezone
 from html import escape
@@ -13,323 +6,277 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
-from services.agent_service import get_all_tickets, get_metrics, run_agent_query
-from services import auth_service
-from services.error_logging import log_error
 from core.examples import GUIDED_EXAMPLES, QUICK_TOOL_EXAMPLES
 from core.skills import SkillRegistry
 from core.trace_summary import summarize_tool_calls
+from services import auth_service
+from services.agent_service import get_all_tickets, get_metrics, run_agent_query
+from services.error_logging import log_error
 
-# Skill registry powers the 🧩 Skills panel and /slash commands.
+
 skill_registry = SkillRegistry()
 
 
 def set_query_prompt(prompt: str) -> None:
-    """Populate the query composer from a guided example or slash launcher."""
+    """Populate the analysis composer from a recommended prompt."""
     st.session_state.query_input = prompt
 
-# ── Page Config ───────────────────────────────────────────────────────────────
+
+def clear_query() -> None:
+    """Reset the composer and the latest analysis."""
+    st.session_state.query_input = ""
+    st.session_state.query_response = None
+    st.session_state.query_trace = None
+    st.session_state.last_query = ""
+
+
+def render_metric(label: str, value: int | float, detail: str, tone: str = "") -> None:
+    """Render a compact product metric card."""
+    st.markdown(
+        f"""
+        <div class="metric-card {tone}">
+          <div class="metric-label">{escape(label)}</div>
+          <div class="metric-value">{value}</div>
+          <div class="metric-detail">{escape(detail)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_execution_details(trace: list[dict]) -> None:
+    """Show an auditable, secondary view of agent activity."""
+    tool_calls = summarize_tool_calls(trace)
+    if tool_calls:
+        labels = []
+        for call in tool_calls:
+            label = call["name"]
+            if call["skill_name"]:
+                label += f" · {call['skill_name']}"
+            labels.append(f"`{label}`")
+        st.caption("Execution path")
+        st.markdown(" → ".join(labels))
+
+    with st.expander("View execution details", expanded=False):
+        st.caption("Tool activity and intermediate messages used to produce this analysis.")
+        for index, message in enumerate(trace):
+            role = str(message.get("role", "unknown")).replace("_", " ").title()
+            content = str(message.get("content", ""))
+            if len(content) > 2000:
+                content = content[:2000] + "\n\n… output truncated"
+            st.markdown(f"**{role}**")
+            st.code(content, language=None)
+            for tool_call in message.get("tool_calls", []) or []:
+                st.caption(f"Tool called: `{tool_call.get('name', 'unknown')}`")
+            if index < len(trace) - 1:
+                st.divider()
+
+
 st.set_page_config(
     page_title="BA Jira Agent",
-    page_icon="🤖",
+    page_icon="◼",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
-CARD_CSS = """
+
+APP_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+
 :root {
-  --accent: #1DB954;
-  --accent-dark: #169a45;
-  --accent-light: #1ED760;
-  --text: #1A1A1A;
-  --muted: #4A4A4A;
-  --muted-2: #8A8A8A;
-  --border: #E8E8E8;
-  --border-strong: #D0D0D0;
-  --bg: #FFFFFF;
-  --bg-2: #FAFAFA;
-  --panel-soft: #F5F5F5;
-  --panel-softer: #F0F0F0;
-  --shadow: 0 1px 3px rgba(29, 185, 84, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 4px 12px rgba(29, 185, 84, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --radius-xl: 20px;
-  --radius-lg: 14px;
-  --radius-md: 10px;
-  --radius-sm: 8px;
-  --amber: #FFA000;
-  --red: #E53935;
-  --blue: #2563EB;
-  --violet: #7C3AED;
-  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --accent: #0C66E4;
+  --accent-hover: #0055CC;
+  --success: #1F845A;
+  --warning: #B65C02;
+  --danger: #C9372C;
+  --ink: #172B4D;
+  --muted: #626F86;
+  --subtle: #8590A2;
+  --border: #DFE1E6;
+  --surface: #FFFFFF;
+  --canvas: #F7F8FA;
+  --surface-subtle: #F1F2F4;
+  --shadow: 0 1px 2px rgba(9,30,66,.08), 0 1px 3px rgba(9,30,66,.06);
+  --shadow-raised: 0 8px 24px rgba(9,30,66,.10);
+  --radius: 12px;
+  --font: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-* { font-family: var(--font-sans) !important; }
-[data-testid="stIconMaterial"] { font-family: "Material Symbols Rounded" !important; }
+* { font-family: var(--font) !important; }
 html { scroll-behavior: smooth; }
+.stApp { background: var(--canvas); color: var(--ink); }
+header[data-testid="stHeader"], [data-testid="stToolbar"] { display: none !important; }
+.block-container { max-width: 1280px !important; padding: 1.35rem 2rem 2.5rem !important; }
 
-.stApp { background: var(--bg); color: var(--text); }
-header[data-testid="stHeader"] { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
-.block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1180px !important; }
-.stMain .block-container { max-width: 1180px !important; }
+/* Sidebar */
+[data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid var(--border); }
+[data-testid="stSidebarContent"] { padding-top: .75rem; }
+[data-testid="stSidebar"] hr { border-color: var(--border); }
+.brand-lockup { display: flex; align-items: center; gap: .75rem; margin: .25rem 0 1.2rem; }
+.brand-mark {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px;
+  background: var(--accent); color: white !important; font-size: .78rem; font-weight: 700;
+  letter-spacing: .04em;
+}
+.brand-name { color: var(--ink) !important; font-size: 1rem; font-weight: 700; line-height: 1.1; }
+.brand-meta { color: var(--muted) !important; font-size: .75rem; margin-top: .2rem; }
+.sidebar-label { color: var(--subtle) !important; font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.source-card {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-subtle);
+  padding: .75rem .85rem; margin: .4rem 0 .8rem;
+}
+.source-card strong { color: var(--ink) !important; font-size: .86rem; }
+.source-card span { color: var(--muted) !important; font-size: .76rem; }
+.status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--success); margin-right: .4rem; }
 
-/* ── Sidebar ── */
-[data-testid="stSidebar"] { background: var(--bg-2); border-right: 1px solid var(--border); }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] span { color: var(--muted); }
-[data-testid="stSidebar"] div.stButton > button {
-  background: var(--bg) !important; border-color: var(--border) !important; color: var(--text) !important;
+/* Header */
+.workspace-header {
+  display: flex; justify-content: space-between; align-items: center; gap: 2rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 1.35rem 1.55rem; box-shadow: var(--shadow); margin-bottom: 1.15rem;
 }
-[data-testid="stSidebar"] div.stButton > button:hover {
-  background: var(--panel-soft) !important; border-color: var(--accent) !important;
-}
-[data-testid="stSidebar"] hr { border-color: var(--border) !important; }
-[data-testid="stSidebar"] .stButton { margin-bottom: 0.35rem; }
-[data-testid="stSidebarContent"]::-webkit-scrollbar-track { background: var(--panel-soft); }
-[data-testid="stSidebarContent"]::-webkit-scrollbar-thumb { background: rgba(29,185,84,0.3); }
-
-/* ── Sidebar brand card ── */
-.sidebar-brand {
-  border: 1px solid var(--border); border-radius: var(--radius-lg);
-  background: var(--bg); padding: 1rem; margin: 0.35rem 0 1rem; box-shadow: var(--shadow);
-}
-.sidebar-brand p { color: var(--muted) !important; font-size: 0.86rem; line-height: 1.45; margin: 0; }
-
-/* ── Input fields ── */
-.stTextInput input, .stTextArea textarea {
-  background: var(--bg) !important; border-color: var(--border) !important; color: var(--text) !important;
-}
-.stTextInput input:focus, .stTextArea textarea:focus {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px rgba(29,185,84,0.12) !important;
-}
-
-/* ── Primary button ── */
-button[kind="primary"] {
-  border-radius: var(--radius-sm) !important;
-  background: var(--accent) !important; border-color: var(--accent) !important; color: #FFFFFF !important;
-}
-button[kind="primary"]:hover { background: var(--accent-light) !important; }
-button[kind="primary"]:active { transform: scale(0.98) !important; }
-
-/* ── Universal text overrides ── */
-h1, h2, h3, h4, h5, h6 { color: var(--text) !important; text-wrap: balance; }
-p, li, label, span, div { color: var(--text) !important; text-wrap: pretty; }
-[data-testid="stMarkdownContainer"] p { color: var(--muted) !important; }
-
-/* ── Button hover states ── */
-.stButton button {
-  border: 1px solid var(--border) !important; border-radius: var(--radius-sm) !important;
-  transition: all 0.2s !important; background: var(--bg) !important; color: var(--text) !important;
-}
-.stButton button:hover { border-color: var(--accent) !important; background: rgba(29,185,84,0.08) !important; }
-.stButton button:active { transform: scale(0.98) !important; }
-
-/* ── Radio / Checkbox / Toggle ── */
-.stRadio div, .stCheckbox div, .stToggle div { background: var(--bg) !important; }
-.stRadio [role="radio"][aria-checked="true"] div { background: var(--accent) !important; }
-
-/* ── Hero card with gradient bottom border ── */
-.hero-card {
-  border: 1px solid var(--border); border-radius: var(--radius-xl);
-  background: var(--bg); box-shadow: var(--shadow);
-  overflow: hidden; position: relative; padding: 1.6rem 1.8rem; margin-bottom: 1.2rem;
-}
-.hero-card::after {
-  content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-light), var(--violet));
-}
-.hero-eyebrow {
-  color: #0d7a2e !important; font-size: 0.78rem; font-weight: 800;
-  letter-spacing: 0.12em; margin-bottom: 0.5rem; text-transform: uppercase;
-}
-.hero-title {
-  font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 900;
-  letter-spacing: -0.02em; line-height: 1.1; color: var(--text); margin-bottom: 0.4rem;
-}
-.hero-subtitle { color: var(--muted); font-size: 1.02rem; margin: 0; max-width: 760px; line-height: 1.55; }
-.hero-chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
-.hero-chip-row span {
-  background: var(--panel-softer); border: 1px solid var(--border);
-  border-radius: 999px; color: var(--muted) !important; font-size: 0.78rem; padding: 0.35rem 0.7rem;
+.workspace-kicker { color: var(--accent) !important; font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.workspace-title { color: var(--ink) !important; font-size: 1.65rem; font-weight: 700; line-height: 1.2; margin: .3rem 0; }
+.workspace-subtitle { color: var(--muted) !important; font-size: .92rem; margin: 0; }
+.header-status {
+  display: inline-flex; align-items: center; white-space: nowrap; color: var(--ink) !important;
+  background: #E9F2FF; border: 1px solid #CCE0FF; border-radius: 999px;
+  padding: .45rem .75rem; font-size: .78rem; font-weight: 600;
 }
 
-/* ── Metric cards ── */
+/* Metrics */
 .metric-card {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 1rem;
-  box-shadow: var(--shadow); text-align: center;
+  min-height: 118px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1rem 1.05rem; box-shadow: var(--shadow);
+  border-top: 3px solid #B3B9C4;
 }
-.metric-card .metric-value { font-size: 2rem; font-weight: 800; color: var(--text); line-height: 1.2; }
-.metric-card .metric-label { font-size: 0.75rem; font-weight: 600; color: var(--muted-2); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.metric-value.accent { color: var(--accent) !important; }
-.metric-value.amber  { color: var(--amber) !important; }
-.metric-value.red    { color: var(--red) !important; }
+.metric-card.accent { border-top-color: var(--accent); }
+.metric-card.warning { border-top-color: #E2B203; }
+.metric-card.danger { border-top-color: var(--danger); }
+.metric-label { color: var(--muted) !important; font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.metric-value { color: var(--ink) !important; font-size: 1.85rem; font-weight: 700; line-height: 1.15; margin: .35rem 0 .2rem; }
+.metric-detail { color: var(--subtle) !important; font-size: .75rem; }
 
-/* ── Results card ── */
-.results-card {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;
+/* Streamlit surfaces */
+[data-testid="stTabs"] [role="tablist"] { gap: .35rem; border-bottom: 1px solid var(--border); }
+[data-testid="stTabs"] button[role="tab"] { color: var(--muted) !important; font-weight: 600 !important; padding: .7rem 1rem !important; }
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { color: var(--accent) !important; }
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] { background: var(--accent) !important; }
+[data-testid="stVerticalBlockBorderWrapper"] {
+  background: var(--surface); border-color: var(--border) !important; border-radius: var(--radius) !important;
   box-shadow: var(--shadow);
 }
-
-/* ── Guided examples ── */
-.example-route {
-  color: var(--muted-2) !important; font-size: 0.76rem; line-height: 1.45;
-  letter-spacing: 0.01em;
+.stTextArea textarea, .stTextInput input, [data-baseweb="select"] > div {
+  background: var(--surface) !important; border-color: var(--border) !important; color: var(--ink) !important;
 }
-
-/* ── Ticket table card ── */
-.ticket-card {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem;
-  box-shadow: var(--shadow);
+.stTextArea textarea:focus, .stTextInput input:focus {
+  border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgba(12,102,228,.13) !important;
 }
-
-/* ── Submit button ── */
-div.stButton > button[kind="primary"] {
-  background: var(--accent) !important; color: #fff !important;
-  border: none !important; border-radius: var(--radius-md) !important;
-  font-weight: 600 !important; font-size: 0.95rem !important;
-  padding: 0.6rem 1.75rem !important; width: 100% !important;
+.stButton button {
+  min-height: 40px; border: 1px solid var(--border) !important; border-radius: 8px !important;
+  background: var(--surface) !important; color: var(--ink) !important; font-weight: 600 !important;
+  transition: background .15s, border-color .15s, transform .15s;
 }
-div.stButton > button[kind="primary"]:hover { background: var(--accent-dark) !important; }
+.stButton button:hover { background: #F0F6FF !important; border-color: var(--accent) !important; color: var(--accent) !important; }
+.stButton button:active { transform: scale(.985); }
+.stButton button[kind="primary"] { background: var(--accent) !important; border-color: var(--accent) !important; color: white !important; }
+.stButton button[kind="primary"]:hover { background: var(--accent-hover) !important; color: white !important; }
 
-/* ── Jira Connection Section ── */
-.jira-connection-section {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.2rem 1.5rem; margin-bottom: 1.2rem;
-  box-shadow: var(--shadow);
+/* Assistant */
+.section-kicker { color: var(--accent) !important; font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.section-title { color: var(--ink) !important; font-size: 1.35rem; font-weight: 700; margin: .25rem 0 .3rem; }
+.section-copy { color: var(--muted) !important; font-size: .88rem; margin: 0 0 1rem; }
+.empty-state {
+  text-align: center; background: linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);
+  border: 1px dashed #B3B9C4; border-radius: var(--radius); padding: 2.5rem 1.5rem; margin-top: 1rem;
 }
-.jira-connected-badge {
-  display: inline-block; background: #1DB954; color: #FFFFFF;
-  font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.75rem;
-  border-radius: 999px; margin-bottom: 0.5rem;
+.empty-state strong { display: block; color: var(--ink) !important; font-size: 1rem; margin-bottom: .35rem; }
+.empty-state span { color: var(--muted) !important; font-size: .84rem; }
+.request-card {
+  background: #E9F2FF; border: 1px solid #CCE0FF; border-radius: 10px;
+  padding: .85rem 1rem; color: var(--ink) !important; font-size: .88rem; margin: .9rem 0;
 }
-.jira-disconnected-badge {
-  display: inline-block; background: var(--panel-softer); color: var(--muted);
-  font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.75rem;
-  border-radius: 999px; margin-bottom: 0.5rem;
+.response-header { display: flex; align-items: center; justify-content: space-between; margin: .2rem 0 .75rem; }
+.response-header strong { color: var(--ink) !important; font-size: 1rem; }
+.response-state { color: var(--success) !important; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.workflow-card {
+  background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 10px;
+  padding: .85rem .9rem; margin: .55rem 0 .75rem;
 }
+.workflow-card strong { color: var(--ink) !important; font-size: .87rem; }
+.workflow-card p { color: var(--muted) !important; font-size: .78rem; line-height: 1.45; margin: .3rem 0 0; }
+.system-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); padding: .48rem 0; font-size: .78rem; }
+.system-row:last-child { border-bottom: 0; }
+.system-row span { color: var(--muted) !important; }
+.system-row strong { color: var(--ink) !important; }
 
-/* ── Footer ── */
-.app-footer { text-align: center; color: var(--muted-2); font-size: 0.75rem; padding: 1.5rem 0 0.5rem 0; border-top: 1px solid var(--border); margin-top: 2rem; }
+/* Backlog */
+.table-summary { color: var(--muted) !important; font-size: .8rem; margin: .25rem 0 .75rem; }
+.app-footer { color: var(--subtle) !important; text-align: center; font-size: .72rem; padding: 1.75rem 0 .2rem; }
 
-/* ═══════════════════════════════════════════════════════════════════
-   MOBILE RESPONSIVE (768px breakpoint)
-   ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  /* ── Main content ── */
-  [data-testid="stAppViewContainer"] .block-container {
-    padding: 1.25rem 1.25rem 4rem 1.25rem !important; margin-left: 0 !important; max-width: 100% !important;
-  }
-
-  /* ── Stack columns ── */
-  [data-testid="stHorizontalBlock"] > [data-testid="column"] {
-    flex: 0 0 100% !important; width: 100% !important;
-  }
-
-  /* ── 14px font floor ── */
-  [data-testid="stAppViewContainer"] .block-container p,
-  [data-testid="stAppViewContainer"] .block-container span:not(.hero-chip-row span),
-  [data-testid="stAppViewContainer"] .block-container label,
-  [data-testid="stAppViewContainer"] .block-container small {
-    font-size: 0.875rem !important; line-height: 1.4 !important;
-  }
-
-  /* ── 44px tap targets ── */
-  [data-testid="stAppViewContainer"] .block-container a,
-  [data-testid="stAppViewContainer"] .block-container button,
-  [data-testid="stAppViewContainer"] .block-container [role="button"],
-  [data-testid="stAppViewContainer"] .block-container select,
-  [data-testid="stAppViewContainer"] .block-container input {
-    min-height: 44px !important; min-width: 44px !important;
-  }
-
-  .hero-card { padding: 1.2rem 1rem; }
-  .hero-title { font-size: 1.5rem !important; }
-  .hero-subtitle { font-size: 0.88rem !important; }
-  .hero-chip-row span { font-size: 0.7rem !important; padding: 0.25rem 0.5rem; white-space: nowrap; }
+  .block-container { padding: 1rem 1rem 3rem !important; }
+  .workspace-header { align-items: flex-start; flex-direction: column; gap: .8rem; }
+  .workspace-title { font-size: 1.4rem; }
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"] { min-width: 100% !important; flex: 1 1 100% !important; }
+  .metric-card { min-height: 100px; }
+  .stButton button, input, textarea, select { min-height: 44px !important; }
 }
 </style>
 """
 
-st.markdown(CARD_CSS, unsafe_allow_html=True)
+st.markdown(APP_CSS, unsafe_allow_html=True)
 
-# ── Hero card ──────────────────────────────────────────────────────────────────
-st.markdown(
+
+# Session state
+for key, default in (
+    ("jira_config", None),
+    ("jira_connection_user", ""),
+    ("query_input", ""),
+    ("query_response", None),
+    ("query_trace", None),
+    ("last_query", ""),
+):
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+# Sidebar application shell
+st.sidebar.markdown(
     """
-    <div class="hero-card">
-      <div class="hero-eyebrow">LANGCHAIN REACT AGENT</div>
-      <h1 class="hero-title">BA Jira Agent</h1>
-      <p class="hero-subtitle">
-        AI agent that analyzes Jira backlogs — reasons, calls tools,
-        and produces structured summaries.
-      </p>
-      <div class="hero-chip-row">
-        <span>DeepSeek LLM</span>
-        <span>4 Jira Data Tools</span>
-        <span>4 BA Skills</span>
-        <span>ReAct Agent</span>
-      </div>
+    <div class="brand-lockup">
+      <div class="brand-mark">BA</div>
+      <div><div class="brand-name">BA Jira Agent</div><div class="brand-meta">Delivery intelligence</div></div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+st.sidebar.markdown('<div class="sidebar-label">Workspace</div>', unsafe_allow_html=True)
+st.sidebar.markdown("**Product delivery**  \nSprint planning & backlog operations")
 
-# ── Live Jira Connection ──────────────────────────────────────────────────────
-if "jira_config" not in st.session_state:
-    st.session_state.jira_config = None
-if "jira_connection_user" not in st.session_state:
-    st.session_state.jira_connection_user = ""
-
-with st.expander("Data source & Jira connection", expanded=False):
+with st.sidebar.expander("Data source", expanded=True):
     use_live_jira = st.toggle(
-        "Connect to live Jira",
+        "Use live Jira",
         value=False,
         key="use_live_jira",
-        help="Leave this off to explore safely with the bundled mock backlog.",
+        help="Turn this off to work with the bundled demonstration backlog.",
     )
 
     if use_live_jira:
-        current_user = st.session_state.get("jira_connection_user", "")
-        if st.session_state.get("jira_config") and current_user:
-            safe_current_user = escape(str(current_user))
-            st.markdown(
-                f'<span class="jira-connected-badge">Live Jira · Connected as {safe_current_user}</span>',
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                f"API token: {auth_service.mask_pat(st.session_state.jira_config.get('pat', ''))}"
-            )
-        else:
-            st.markdown(
-                '<span class="jira-disconnected-badge">Live Jira · Not connected</span>',
-                unsafe_allow_html=True,
-            )
-
         jira_url = st.text_input(
             "Jira URL",
             placeholder="https://your-domain.atlassian.net",
             key="jira_url",
         )
-        jira_email = st.text_input(
-            "Email",
-            placeholder="you@company.com",
-            key="jira_email",
-        )
+        jira_email = st.text_input("Email", placeholder="you@company.com", key="jira_email")
         jira_pat = st.text_input(
-            "API Token",
+            "API token",
             type="password",
             placeholder="Your Jira API token",
             key="jira_pat",
         )
-
         if st.button("Test connection", key="test_jira_connection", width="stretch"):
             result = auth_service.validate_jira_connection(jira_url, jira_pat, jira_email)
             if result.get("connected"):
@@ -347,313 +294,303 @@ with st.expander("Data source & Jira connection", expanded=False):
                 st.session_state.jira_config = None
                 st.session_state.jira_connection_user = ""
                 st.error(result.get("error", "Connection failed."))
+
+        current_user = st.session_state.get("jira_connection_user", "")
+        if st.session_state.get("jira_config") and current_user:
+            st.caption(
+                f"Signed in as {current_user} · "
+                f"{auth_service.mask_pat(st.session_state.jira_config.get('pat', ''))}"
+            )
+        else:
+            st.caption("Enter Jira Cloud credentials to enable live analysis.")
     else:
-        st.caption("Using the bundled mock backlog. No Jira credentials are required.")
+        st.caption("Safe demo mode with the bundled Jira export.")
 
 active_jira_config = st.session_state.get("jira_config") if use_live_jira else None
 data_source = "jira" if use_live_jira and active_jira_config else "mock"
-mode_badge = "🔗 Live Jira" if data_source == "jira" else "📦 Mock Data"
+source_label = "Live Jira" if data_source == "jira" else "Demo workspace"
+
 st.sidebar.markdown(
-    """
-    <div class="sidebar-brand">
-      <strong style="font-size:1.05rem;">BA Jira Agent</strong>
-      <p>Decision support for backlog health, delivery risk, and sprint planning.</p>
+    f"""
+    <div class="source-card">
+      <strong><span class="status-dot"></span>{source_label}</strong><br>
+      <span>{'Connected and ready' if data_source == 'jira' else 'Local sample data · read only'}</span>
     </div>
     """,
     unsafe_allow_html=True,
 )
-st.sidebar.markdown(f"**Mode:** {mode_badge}")
 
-# ── Skills panel (progressive-disclosure catalog) ──────────────────────────────
 _skills = skill_registry.list_skills()
-if _skills:
-    st.sidebar.markdown("### 🧩 Skills")
-    st.sidebar.caption(
-        "Reusable BA playbooks. The agent loads a skill's full procedure on demand "
-        "(watch for `load_skill` in the trace)."
-    )
-    for _sk in _skills:
-        cmd = f"`{_sk.command}` " if _sk.command else ""
-        st.sidebar.markdown(f"**{cmd}{_sk.name}**  \n{_sk.description}")
+with st.sidebar.expander(f"Agent capabilities · {len(_skills)}", expanded=False):
+    for skill in _skills:
+        display_name = skill.name.replace("-", " ").title()
+        st.markdown(f"**{display_name}**  ")
+        st.caption(f"{skill.command} · {skill.description}")
 
-with st.sidebar.expander("How it works", expanded=False):
-    st.markdown(
-        """
-        The agent uses four Jira data tools for focused questions and loads reusable
-        BA skills for reports, forecasts, stand-ups, and risk triage.
+st.sidebar.divider()
+st.sidebar.caption("DeepSeek · LangChain · Auditable tool execution")
 
-        Open the activity trace after a response to verify every tool call.
-        """
-    )
 
-# ── Metrics Dashboard ─────────────────────────────────────────────────────────
-st.markdown("#### Backlog overview")
+# Workspace header and KPIs
+st.markdown(
+    f"""
+    <div class="workspace-header">
+      <div>
+        <div class="workspace-kicker">Delivery intelligence</div>
+        <div class="workspace-title">Plan with evidence, not assumptions</div>
+        <p class="workspace-subtitle">Ask questions across backlog health, ownership, sprint risk, and delivery capacity.</p>
+      </div>
+      <div class="header-status"><span class="status-dot"></span>{source_label}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 metrics = get_metrics(data_source=data_source, jira_config=active_jira_config)
+total = int(metrics.get("total", 0) or 0)
+total_sp = int(metrics.get("total_sp", 0) or 0)
+unassigned = int(metrics.get("unassigned", 0) or 0)
+open_bugs = int(metrics.get("open_bugs", 0) or 0)
+ownership_rate = round(((total - unassigned) / total) * 100) if total else 0
+
 m1, m2, m3, m4 = st.columns(4)
 with m1:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-          <div class="metric-icon">📋</div>
-          <div class="metric-value">{metrics['total']}</div>
-          <div class="metric-label">Total Tickets</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_metric("Backlog items", total, "Tickets in the active data source")
 with m2:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-          <div class="metric-icon">⚡</div>
-          <div class="metric-value accent">{metrics['total_sp']}</div>
-          <div class="metric-label">Total Story Points</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_metric("Story points", total_sp, "Estimated delivery scope", "accent")
 with m3:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-          <div class="metric-icon">👤</div>
-          <div class="metric-value amber">{metrics['unassigned']}</div>
-          <div class="metric-label">Unassigned</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_metric("Unassigned", unassigned, f"{ownership_rate}% currently has an owner", "warning")
 with m4:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-          <div class="metric-icon">🐛</div>
-          <div class="metric-value red">{metrics['open_bugs']}</div>
-          <div class="metric-label">Open Bugs</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_metric("Open bugs", open_bugs, "Defects requiring attention", "danger")
 
-# ── Query Input ───────────────────────────────────────────────────────────────
-st.markdown("### Ask the agent")
-st.caption(
-    f"Analyzing **{mode_badge}**. Ask a focused Jira question or start from a guided workflow."
-)
-
-# Initialize session state for query
-if "query" not in st.session_state:
-    st.session_state.query = ""
-if "query_input" not in st.session_state:
-    st.session_state.query_input = ""
+st.markdown("<div style='height:.45rem'></div>", unsafe_allow_html=True)
+assistant_tab, backlog_tab = st.tabs(["Assistant", "Backlog explorer"])
 
 
-def clear_query() -> None:
-    """Reset the composer and its most recent result from a button callback."""
-    st.session_state.query_input = ""
-    st.session_state.query_response = None
-    st.session_state.query_trace = None
+with assistant_tab:
+    analysis_col, rail_col = st.columns([2.15, 1], gap="large")
 
-query = st.text_area(
-    "Describe what you want to know about the Jira backlog:",
-    placeholder="Ask about sprint health, delivery risk, velocity, ownership, or specific tickets…",
-    height=110,
-    label_visibility="collapsed",
-    key="query_input",
-)
+    with analysis_col:
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">AI analysis</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">What do you need to know?</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<p class="section-copy">Describe the decision you are making. The agent will select the appropriate workflow and inspect Jira data before answering.</p>',
+                unsafe_allow_html=True,
+            )
+            st.text_area(
+                "Ask about your backlog",
+                placeholder="Example: Where is Sprint 24 most likely to slip, and what should we do today?",
+                height=125,
+                label_visibility="collapsed",
+                key="query_input",
+            )
+            run_col, clear_col = st.columns([2, 1])
+            with run_col:
+                submitted = st.button(
+                    "Run analysis",
+                    width="stretch",
+                    type="primary",
+                    key="run_agent",
+                )
+            with clear_col:
+                st.button(
+                    "Clear",
+                    width="stretch",
+                    key="clear_query",
+                    on_click=clear_query,
+                )
+            st.caption("Responses are grounded in the selected Jira source. Review important decisions against the underlying tickets.")
 
-submit_col, clear_col, hint_col = st.columns([2, 1, 3])
-with submit_col:
-    submitted = st.button("Run analysis", width="stretch", type="primary", key="run_agent")
-with clear_col:
-    st.button("Clear", width="stretch", key="clear_query", on_click=clear_query)
-with hint_col:
-    st.caption("Tip: detailed reports load a skill; simple lookups call data tools directly.")
+        if submitted and st.session_state.query_input.strip():
+            original_query = st.session_state.query_input.strip()
+            with st.spinner("Reviewing backlog data and preparing the analysis…"):
+                try:
+                    query_to_run = skill_registry.expand_slash_command(original_query)
+                    result = run_agent_query(
+                        query_to_run,
+                        data_source=data_source,
+                        jira_config=active_jira_config,
+                    )
+                    st.session_state.last_query = original_query
+                    st.session_state.query_response = result["answer"]
+                    st.session_state.query_trace = result["trace"]
+                except Exception as exc:
+                    log_error("ui", f"Agent invocation failed: {exc}", exc_info=True)
+                    st.session_state.last_query = original_query
+                    st.session_state.query_response = f"Analysis could not be completed: {exc}"
+                    st.session_state.query_trace = [{"role": "error", "content": str(exc)}]
 
-# ── Compact prompt gallery ────────────────────────────────────────────────────
-with st.expander("Start with an example", expanded=False):
-    workflow_tab, quick_tab, command_tab = st.tabs(
-        ["Guided workflow", "Quick question", "Slash commands"]
-    )
+        if st.session_state.query_response:
+            if st.session_state.last_query:
+                st.markdown(
+                    f'<div class="request-card"><strong>Request</strong><br>{escape(st.session_state.last_query)}</div>',
+                    unsafe_allow_html=True,
+                )
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="response-header"><strong>Analysis</strong><span class="response-state">Complete</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(st.session_state.query_response)
+                if st.session_state.query_trace:
+                    st.divider()
+                    render_execution_details(st.session_state.query_trace)
+        else:
+            st.markdown(
+                """
+                <div class="empty-state">
+                  <strong>Your analysis will appear here</strong>
+                  <span>Start with a question or choose a recommended workflow from the panel.</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with workflow_tab:
-        selected_index = st.selectbox(
-            "Workflow",
-            options=range(len(GUIDED_EXAMPLES)),
-            format_func=lambda index: GUIDED_EXAMPLES[index].title,
-            key="guided_workflow_select",
-        )
-        selected_example = GUIDED_EXAMPLES[selected_index]
-        st.caption(selected_example.outcome)
-        st.markdown(f"> {selected_example.prompt}")
-        skill_route = " + ".join(selected_example.skills)
-        tool_route = " → ".join(selected_example.tools)
-        st.markdown(
-            f'<div class="example-route">Skill: {skill_route}<br>Tools: {tool_route}</div>',
-            unsafe_allow_html=True,
-        )
-        st.button(
-            "Use this workflow",
-            key="guided_example_load",
-            width="stretch",
-            on_click=set_query_prompt,
-            args=(selected_example.prompt,),
-        )
+    with rail_col:
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">Recommended</div>', unsafe_allow_html=True)
+            st.markdown("#### Start with a workflow")
+            selected_index = st.selectbox(
+                "Workflow",
+                options=range(len(GUIDED_EXAMPLES)),
+                format_func=lambda index: GUIDED_EXAMPLES[index].title,
+                key="guided_workflow_select",
+                label_visibility="collapsed",
+            )
+            selected_example = GUIDED_EXAMPLES[selected_index]
+            st.markdown(
+                f"""
+                <div class="workflow-card">
+                  <strong>{escape(selected_example.title)}</strong>
+                  <p>{escape(selected_example.outcome)}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.button(
+                "Use this workflow",
+                key="guided_example_load",
+                width="stretch",
+                on_click=set_query_prompt,
+                args=(selected_example.prompt,),
+            )
 
-    with quick_tab:
-        quick_cols = st.columns(2)
-        for i, prompt in enumerate(QUICK_TOOL_EXAMPLES):
-            with quick_cols[i % 2]:
+            st.markdown("##### Quick questions")
+            for index, prompt in enumerate(QUICK_TOOL_EXAMPLES[:3]):
                 st.button(
                     prompt,
-                    key=f"quick_example_{i}",
+                    key=f"quick_example_{index}",
                     width="stretch",
                     on_click=set_query_prompt,
                     args=(prompt,),
                 )
 
-    with command_tab:
-        st.caption("Slash commands explicitly launch one reusable BA skill.")
-        if _skills:
-            skill_cols = st.columns(min(len(_skills), 4))
-            for i, _sk in enumerate(_skills):
-                label = _sk.command or f"/{_sk.slug}"
-                with skill_cols[i % len(skill_cols)]:
-                    st.button(
-                        label,
-                        key=f"skill_{_sk.slug}",
-                        width="stretch",
-                        help=_sk.description,
-                        on_click=set_query_prompt,
-                        args=(label,),
-                    )
-
-# ── Execute Agent ─────────────────────────────────────────────────────────────
-if submitted and st.session_state.get("query_input", "").strip():
-
-    with st.spinner("🤔 Agent is reasoning... this may take 10–30 seconds"):
-        try:
-            query_to_run = skill_registry.expand_slash_command(
-                st.session_state.query_input.strip()
-            )
-            result = run_agent_query(
-                query_to_run,
-                data_source=data_source,
-                jira_config=active_jira_config,
-            )
-            st.session_state.query_response = result["answer"]
-            st.session_state.query_trace = result["trace"]
-        except Exception as exc:
-            log_error("ui", f"Agent invocation failed: {exc}", exc_info=True)
-            st.session_state.query_response = f"❌ An error occurred: {str(exc)}"
-            st.session_state.query_trace = [{"role": "error", "content": str(exc)}]
-
-# ── Results ───────────────────────────────────────────────────────────────────
-if "query_response" in st.session_state and st.session_state.query_response:
-    st.markdown('<div class="results-card">', unsafe_allow_html=True)
-    st.markdown("### 📝 Agent Response")
-    st.markdown(st.session_state.query_response)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    tool_calls = summarize_tool_calls(st.session_state.get("query_trace"))
-    if tool_calls:
-        route_labels = []
-        for call in tool_calls:
-            label = call["name"]
-            if call["skill_name"]:
-                label += f" ({call['skill_name']})"
-            route_labels.append(f"`{label}`")
         with st.container(border=True):
-            st.markdown("**✅ Observed execution**")
-            st.markdown(" → ".join(route_labels))
+            st.markdown('<div class="section-kicker">Workspace status</div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div class="system-row"><span>Data source</span><strong>{source_label}</strong></div>
+                <div class="system-row"><span>Backlog items</span><strong>{total}</strong></div>
+                <div class="system-row"><span>Available workflows</span><strong>{len(_skills)}</strong></div>
+                <div class="system-row"><span>Execution</span><strong>Auditable</strong></div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    # Agent trace expander
-    if "query_trace" in st.session_state and st.session_state.query_trace:
-        with st.expander("🧠 Agent Thought Process (ReAct Trace)", expanded=False):
-            for i, msg in enumerate(st.session_state.query_trace):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
 
-                # Color-code by role
-                role_colors = {
-                    "human": "#2563EB",
-                    "ai": "#1DB954",
-                    "tool": "#FFA000",
-                    "error": "#E53935",
-                    "system": "#8A8A8A",
-                }
-                color = role_colors.get(role, "#8A8A8A")
-
-                st.markdown(
-                    f'<span style="color:{color};font-weight:600;">[{role.upper()}]</span>',
-                    unsafe_allow_html=True,
-                )
-
-                # Truncate very long content in trace
-                display_content = content
-                if len(content) > 2000:
-                    display_content = content[:2000] + "\n\n... (truncated)"
-
-                st.code(display_content, language=None)
-
-                # Show tool calls if present
-                if "tool_calls" in msg and msg["tool_calls"]:
-                    for tc in msg["tool_calls"]:
-                        st.caption(f"🔧 Called tool: `{tc['name']}`")
-
-                if i < len(st.session_state.query_trace) - 1:
-                    st.markdown("---")
-
-# ── Ticket Data Table ─────────────────────────────────────────────────────────
-tickets = get_all_tickets(data_source=data_source, jira_config=active_jira_config)
-with st.expander(f"Browse Jira backlog · {len(tickets)} tickets", expanded=False):
-    st.caption("Reference the source data without leaving the analysis workspace.")
-    if tickets:
-        df = pd.DataFrame(tickets)
-        display_cols = [
-            "key",
-            "type",
-            "priority",
-            "status",
-            "assignee",
-            "story_points",
-            "sprint",
-            "summary",
-        ]
-        available_cols = [c for c in display_cols if c in df.columns]
-        extra_cols = [
-            c
-            for c in df.columns
-            if c not in available_cols and c not in {"labels", "description"}
-        ]
-        display_df = df[available_cols + extra_cols].copy().fillna("—")
-
-        st.dataframe(
-            display_df,
-            width="stretch",
-            hide_index=True,
-            height=430,
-            column_config={
-                "key": st.column_config.TextColumn("Key", width="small"),
-                "type": st.column_config.TextColumn("Type", width="small"),
-                "priority": st.column_config.TextColumn("Priority", width="small"),
-                "status": st.column_config.TextColumn("Status", width="small"),
-                "assignee": st.column_config.TextColumn("Assignee", width="medium"),
-                "story_points": st.column_config.NumberColumn("SP", width="small"),
-                "sprint": st.column_config.TextColumn("Sprint", width="medium"),
-                "summary": st.column_config.TextColumn("Summary", width="large"),
-            },
+with backlog_tab:
+    tickets = get_all_tickets(data_source=data_source, jira_config=active_jira_config)
+    with st.container(border=True):
+        st.markdown('<div class="section-kicker">Source of truth</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Backlog explorer</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="section-copy">Search, filter, inspect, and export the Jira records used by the assistant.</p>',
+            unsafe_allow_html=True,
         )
-    else:
-        st.warning("No ticket data is available for the selected source.")
 
-# ── Footer ────────────────────────────────────────────────────────────────────
+        if tickets:
+            df = pd.DataFrame(tickets)
+            search_col, status_col, priority_col = st.columns([2, 1, 1])
+            with search_col:
+                search_term = st.text_input(
+                    "Search",
+                    placeholder="Search key, summary, assignee, or description",
+                    key="backlog_search",
+                )
+            with status_col:
+                status_options = ["All"] + sorted(
+                    value for value in df.get("status", pd.Series(dtype=str)).dropna().astype(str).unique()
+                )
+                selected_status = st.selectbox("Status", status_options, key="backlog_status")
+            with priority_col:
+                priority_options = ["All"] + sorted(
+                    value for value in df.get("priority", pd.Series(dtype=str)).dropna().astype(str).unique()
+                )
+                selected_priority = st.selectbox("Priority", priority_options, key="backlog_priority")
+
+            filtered_df = df.copy()
+            if search_term.strip():
+                searchable_columns = [
+                    column
+                    for column in ("key", "summary", "assignee", "description")
+                    if column in filtered_df.columns
+                ]
+                mask = pd.Series(False, index=filtered_df.index)
+                for column in searchable_columns:
+                    mask |= filtered_df[column].fillna("").astype(str).str.contains(
+                        search_term.strip(), case=False, regex=False
+                    )
+                filtered_df = filtered_df[mask]
+            if selected_status != "All" and "status" in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df["status"].astype(str) == selected_status]
+            if selected_priority != "All" and "priority" in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df["priority"].astype(str) == selected_priority]
+
+            display_columns = [
+                "key",
+                "type",
+                "priority",
+                "status",
+                "assignee",
+                "story_points",
+                "sprint",
+                "summary",
+            ]
+            available_columns = [column for column in display_columns if column in filtered_df.columns]
+            display_df = filtered_df[available_columns].copy().fillna("—")
+            st.markdown(
+                f'<div class="table-summary">Showing {len(display_df)} of {len(df)} tickets</div>',
+                unsafe_allow_html=True,
+            )
+            st.dataframe(
+                display_df,
+                width="stretch",
+                hide_index=True,
+                height=500,
+                column_config={
+                    "key": st.column_config.TextColumn("Key", width="small"),
+                    "type": st.column_config.TextColumn("Type", width="small"),
+                    "priority": st.column_config.TextColumn("Priority", width="small"),
+                    "status": st.column_config.TextColumn("Status", width="small"),
+                    "assignee": st.column_config.TextColumn("Assignee", width="medium"),
+                    "story_points": st.column_config.NumberColumn("SP", width="small"),
+                    "sprint": st.column_config.TextColumn("Sprint", width="medium"),
+                    "summary": st.column_config.TextColumn("Summary", width="large"),
+                },
+            )
+            st.download_button(
+                "Export filtered CSV",
+                data=display_df.to_csv(index=False).encode("utf-8"),
+                file_name="jira-backlog.csv",
+                mime="text/csv",
+                key="export_backlog",
+            )
+        else:
+            st.info("No Jira records are available for the selected data source.")
+
+
 st.markdown(
-    f"""
-    <div class="app-footer">
-      BA Jira Agent · LangChain ReAct · DeepSeek ·
-      Built {datetime.now(timezone.utc).strftime('%Y-%m-%d')}
-    </div>
-    """,
+    f'<div class="app-footer">BA Jira Agent · Delivery intelligence workspace · {datetime.now(timezone.utc).strftime("%Y-%m-%d")}</div>',
     unsafe_allow_html=True,
 )
