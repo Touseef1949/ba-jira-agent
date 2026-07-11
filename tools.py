@@ -338,7 +338,7 @@ def spawn_subagent(skill_name: str, task: str) -> str:
         return f"No skill named '{skill_name}'. Available skills: {available}."
     try:
         # Lazy imports break the import cycle with agent.py (which imports this module).
-        from langgraph.prebuilt import create_react_agent
+        from langchain.agents import create_agent
         from agent import llm
         from core.project_memory import render_memory_section
 
@@ -354,7 +354,11 @@ def spawn_subagent(skill_name: str, task: str) -> str:
         )
         # Sub-agents get the data tools only — never load_skill/spawn_subagent (no recursion).
         sub_tools = [load_tickets, filter_tickets, search_tickets, calculate_metrics]
-        sub_agent = create_react_agent(model=llm, tools=sub_tools, prompt=sub_prompt)
+        sub_agent = create_agent(
+            model=llm,
+            tools=sub_tools,
+            system_prompt=sub_prompt,
+        )
         result = sub_agent.invoke({"messages": [{"role": "user", "content": task}]})
         messages = result.get("messages", [])
         if messages and hasattr(messages[-1], "content"):

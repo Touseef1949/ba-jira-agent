@@ -1,6 +1,6 @@
 """
 BA Jira Agent — LangChain ReAct agent backed by DeepSeek API.
-Uses LangChain 1.3.x / LangGraph API (create_react_agent from langgraph.prebuilt).
+Uses the LangChain agent API (create_agent) backed by a compiled LangGraph.
 
 Exports `agent` (compiled graph), `executor` (alias), and `run_agent(query)`.
 """
@@ -8,7 +8,7 @@ Exports `agent` (compiled graph), `executor` (alias), and `run_agent(query)`.
 import os
 
 from dotenv import load_dotenv
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 from tools import (
@@ -87,9 +87,11 @@ def build_system_prompt(registry=_skill_registry, memory_loader=load_project_mem
             "## Available skills\n"
             "These are reusable playbooks for multi-step BA tasks:\n\n"
             f"{catalog}\n\n"
-            "Use a skill ONLY when the user asks for a full report, analysis, forecast, "
-            "or multi-step triage. In that case call the `load_skill` tool with the "
-            "skill's name FIRST, then follow its procedure using your data tools.\n"
+            "Use skills ONLY when the user asks for a full report, analysis, forecast, "
+            "or multi-step triage. Load every skill the user explicitly requests with "
+            "`load_skill` before following its procedure with the data tools. A combined "
+            "request may require more than one skill; synthesize their outputs without "
+            "duplicating findings.\n"
             "Do NOT use a skill for a direct factual question — a count, a single lookup, "
             "'how many', 'which tickets', 'find X', 'who is assigned'. Answer those "
             "concisely with the data tools alone, and keep the answer scoped to exactly "
@@ -107,13 +109,13 @@ def build_system_prompt(registry=_skill_registry, memory_loader=load_project_mem
 SYSTEM_PROMPT = build_system_prompt()
 
 # ── Agent (compiled LangGraph ReAct agent) ────────────────────────────────────
-# LangChain 1.3.x: create_react_agent returns a compiled StateGraph, not AgentExecutor.
+# LangChain's create_agent returns a compiled StateGraph, not AgentExecutor.
 # Invoke with: agent.invoke({"messages": [{"role": "user", "content": query}]})
 # Result: {"messages": [...]} — last message is the final answer.
-agent = create_react_agent(
+agent = create_agent(
     model=llm,
     tools=tools,
-    prompt=SYSTEM_PROMPT,
+    system_prompt=SYSTEM_PROMPT,
 )
 
 # Alias for compatibility
@@ -132,10 +134,10 @@ def get_agent(data_source: str = "mock", jira_config: dict | None = None):
         A compiled LangGraph StateGraph.
     """
     configure_tools(data_source, jira_config)
-    return create_react_agent(
+    return create_agent(
         model=llm,
         tools=tools,
-        prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
     )
 
 

@@ -111,3 +111,22 @@ class TestAppSmoke:
         at.run(timeout=10)
         assert not at.exception
         assert at.text_area("query_input")
+
+    @pytest.mark.smoke
+    def test_app_shows_guided_skill_and_tool_examples(self, mock_agent_service_module):
+        """The UI should explain and expose combined skill/tool prompts."""
+        from streamlit.testing.v1 import AppTest
+
+        app_path = os.path.join(PROJECT_DIR, "app.py")
+
+        with patch.dict(
+            "sys.modules",
+            {"services.agent_service": mock_agent_service_module},
+        ):
+            at = AppTest.from_file(app_path)
+
+        at.run(timeout=10)
+        assert not at.exception
+        markdown_texts = [str(m.value) for m in at.markdown]
+        assert any("Ask the agent" in text for text in markdown_texts)
+        assert at.button(key="guided_example_load")

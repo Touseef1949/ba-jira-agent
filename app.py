@@ -8,6 +8,7 @@ skill layer (skills panel + /slash launchers).
 """
 
 from datetime import datetime, timezone
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -15,17 +16,24 @@ import streamlit as st
 from services.agent_service import get_all_tickets, get_metrics, run_agent_query
 from services import auth_service
 from services.error_logging import log_error
+from core.examples import GUIDED_EXAMPLES, QUICK_TOOL_EXAMPLES
 from core.skills import SkillRegistry
+from core.trace_summary import summarize_tool_calls
 
 # Skill registry powers the 🧩 Skills panel and /slash commands.
 skill_registry = SkillRegistry()
+
+
+def set_query_prompt(prompt: str) -> None:
+    """Populate the query composer from a guided example or slash launcher."""
+    st.session_state.query_input = prompt
 
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="BA Jira Agent",
     page_icon="🤖",
-    layout="centered",
-    initial_sidebar_state="collapsed",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -66,8 +74,8 @@ html { scroll-behavior: smooth; }
 .stApp { background: var(--bg); color: var(--text); }
 header[data-testid="stHeader"] { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
-.block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1080px !important; }
-.stMain .block-container { max-width: 1080px !important; }
+.block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1180px !important; }
+.stMain .block-container { max-width: 1180px !important; }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] { background: var(--bg-2); border-right: 1px solid var(--border); }
@@ -170,6 +178,12 @@ p, li, label, span, div { color: var(--text) !important; text-wrap: pretty; }
   box-shadow: var(--shadow);
 }
 
+/* ── Guided examples ── */
+.example-route {
+  color: var(--muted-2) !important; font-size: 0.76rem; line-height: 1.45;
+  letter-spacing: 0.01em;
+}
+
 /* ── Ticket table card ── */
 .ticket-card {
   background: var(--bg); border: 1px solid var(--border);
@@ -259,9 +273,9 @@ st.markdown(
       </p>
       <div class="hero-chip-row">
         <span>DeepSeek LLM</span>
-        <span>4 Custom Tools</span>
+        <span>4 Jira Data Tools</span>
+        <span>4 BA Skills</span>
         <span>ReAct Agent</span>
-        <span>LangGraph</span>
       </div>
     </div>
     """,
@@ -274,69 +288,80 @@ if "jira_config" not in st.session_state:
 if "jira_connection_user" not in st.session_state:
     st.session_state.jira_connection_user = ""
 
-st.markdown('<div class="jira-connection-section">', unsafe_allow_html=True)
-use_live_jira = st.toggle("🔌 Connect to Live Jira", value=False, key="use_live_jira")
-
-if use_live_jira:
-    current_user = st.session_state.get("jira_connection_user", "")
-    if st.session_state.get("jira_config") and current_user:
-        st.markdown(
-            f'<span class="jira-connected-badge">🔗 Live Jira · Connected as {current_user}</span>',
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            f"API token: {auth_service.mask_pat(st.session_state.jira_config.get('pat', ''))}"
-        )
-    else:
-        st.markdown(
-            '<span class="jira-disconnected-badge">🔌 Live Jira · Not connected</span>',
-            unsafe_allow_html=True,
-        )
-
-    jira_url = st.text_input(
-        "Jira URL",
-        placeholder="https://your-domain.atlassian.net",
-        key="jira_url",
-    )
-    jira_email = st.text_input(
-        "Email",
-        placeholder="you@company.com",
-        key="jira_email",
-    )
-    jira_pat = st.text_input(
-        "API Token",
-        type="password",
-        placeholder="Your Jira PAT",
-        key="jira_pat",
+with st.expander("Data source & Jira connection", expanded=False):
+    use_live_jira = st.toggle(
+        "Connect to live Jira",
+        value=False,
+        key="use_live_jira",
+        help="Leave this off to explore safely with the bundled mock backlog.",
     )
 
-    if st.button("🔍 Test Connection", key="test_jira_connection"):
-        result = auth_service.validate_jira_connection(jira_url, jira_pat, jira_email)
-        if result.get("connected"):
-            normalized_url = jira_url.strip()
-            if normalized_url and not normalized_url.startswith(("http://", "https://")):
-                normalized_url = f"https://{normalized_url}"
-            st.session_state.jira_config = {
-                "jira_url": normalized_url.rstrip("/"),
-                "email": jira_email.strip(),
-                "pat": jira_pat,
-            }
-            st.session_state.jira_connection_user = result.get("user", "Jira user")
-            st.success(f"✅ Connected as {st.session_state.jira_connection_user}")
+    if use_live_jira:
+        current_user = st.session_state.get("jira_connection_user", "")
+        if st.session_state.get("jira_config") and current_user:
+            safe_current_user = escape(str(current_user))
+            st.markdown(
+                f'<span class="jira-connected-badge">Live Jira · Connected as {safe_current_user}</span>',
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                f"API token: {auth_service.mask_pat(st.session_state.jira_config.get('pat', ''))}"
+            )
         else:
-            st.session_state.jira_config = None
-            st.session_state.jira_connection_user = ""
-            st.error(f"❌ {result.get('error', 'Connection failed.')}")
-else:
-    st.markdown(
-        '<span class="jira-disconnected-badge">📦 Mock Data</span>',
-        unsafe_allow_html=True,
-    )
-st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(
+                '<span class="jira-disconnected-badge">Live Jira · Not connected</span>',
+                unsafe_allow_html=True,
+            )
+
+        jira_url = st.text_input(
+            "Jira URL",
+            placeholder="https://your-domain.atlassian.net",
+            key="jira_url",
+        )
+        jira_email = st.text_input(
+            "Email",
+            placeholder="you@company.com",
+            key="jira_email",
+        )
+        jira_pat = st.text_input(
+            "API Token",
+            type="password",
+            placeholder="Your Jira API token",
+            key="jira_pat",
+        )
+
+        if st.button("Test connection", key="test_jira_connection", width="stretch"):
+            result = auth_service.validate_jira_connection(jira_url, jira_pat, jira_email)
+            if result.get("connected"):
+                normalized_url = jira_url.strip()
+                if normalized_url and not normalized_url.startswith(("http://", "https://")):
+                    normalized_url = f"https://{normalized_url}"
+                st.session_state.jira_config = {
+                    "jira_url": normalized_url.rstrip("/"),
+                    "email": jira_email.strip(),
+                    "pat": jira_pat,
+                }
+                st.session_state.jira_connection_user = result.get("user", "Jira user")
+                st.success(f"Connected as {st.session_state.jira_connection_user}")
+            else:
+                st.session_state.jira_config = None
+                st.session_state.jira_connection_user = ""
+                st.error(result.get("error", "Connection failed."))
+    else:
+        st.caption("Using the bundled mock backlog. No Jira credentials are required.")
 
 active_jira_config = st.session_state.get("jira_config") if use_live_jira else None
 data_source = "jira" if use_live_jira and active_jira_config else "mock"
 mode_badge = "🔗 Live Jira" if data_source == "jira" else "📦 Mock Data"
+st.sidebar.markdown(
+    """
+    <div class="sidebar-brand">
+      <strong style="font-size:1.05rem;">BA Jira Agent</strong>
+      <p>Decision support for backlog health, delivery risk, and sprint planning.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.sidebar.markdown(f"**Mode:** {mode_badge}")
 
 # ── Skills panel (progressive-disclosure catalog) ──────────────────────────────
@@ -351,55 +376,18 @@ if _skills:
         cmd = f"`{_sk.command}` " if _sk.command else ""
         st.sidebar.markdown(f"**{cmd}{_sk.name}**  \n{_sk.description}")
 
-# ── About & Example Queries ────────────────────────────────────────────────────
-with st.expander("ℹ️ About", expanded=False):
+with st.sidebar.expander("How it works", expanded=False):
     st.markdown(
         """
-        **BA Jira Agent** wraps a LangGraph ReAct agent in a Streamlit UI.
-        The agent reasons about Jira backlogs using 4 data tools:
+        The agent uses four Jira data tools for focused questions and loads reusable
+        BA skills for reports, forecasts, stand-ups, and risk triage.
 
-        - `load_tickets` — full backlog listing
-        - `filter_tickets` — filter by field/value
-        - `search_tickets` — keyword search
-        - `calculate_metrics` — sprint & backlog stats
-
-        …plus a **skill layer** (Claude-Code-style): a `load_skill` tool pulls a
-        reusable playbook's full procedure on demand — progressive disclosure you
-        can watch happen in the trace below.
-
-        Built with LangChain, LangGraph, and DeepSeek Chat API.
+        Open the activity trace after a response to verify every tool call.
         """
     )
 
-st.caption("💡 **Try an example:**")
-example_queries = [
-    "Show me all open bugs in Sprint 24",
-    "What's the total story points across all tickets?",
-    "Search for anything related to performance",
-    "Show me unassigned tickets",
-    "Calculate sprint velocity for all sprints",
-    "How many tickets are assigned to Priya?",
-]
-cols = st.columns(3)
-for i, q in enumerate(example_queries):
-    with cols[i % 3]:
-        if st.button(q, key=f"example_{i}", width="stretch"):
-            st.session_state.query = q
-            st.session_state[f"query_input"] = q
-
-# ── Skill launchers (slash commands) ───────────────────────────────────────────
-if _skills:
-    st.caption("🧩 **Run a skill:**")
-    skill_cols = st.columns(min(len(_skills), 4))
-    for i, _sk in enumerate(_skills):
-        label = _sk.command or f"/{_sk.slug}"
-        with skill_cols[i % len(skill_cols)]:
-            if st.button(label, key=f"skill_{_sk.slug}", width="stretch"):
-                st.session_state.query = label
-                st.session_state["query_input"] = label
-st.markdown("<br>", unsafe_allow_html=True)
-
 # ── Metrics Dashboard ─────────────────────────────────────────────────────────
+st.markdown("#### Backlog overview")
 metrics = get_metrics(data_source=data_source, jira_config=active_jira_config)
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -448,7 +436,10 @@ with m4:
     )
 
 # ── Query Input ───────────────────────────────────────────────────────────────
-st.markdown("### 🔍 Ask the Agent")
+st.markdown("### Ask the agent")
+st.caption(
+    f"Analyzing **{mode_badge}**. Ask a focused Jira question or start from a guided workflow."
+)
 
 # Initialize session state for query
 if "query" not in st.session_state:
@@ -456,22 +447,86 @@ if "query" not in st.session_state:
 if "query_input" not in st.session_state:
     st.session_state.query_input = ""
 
+
+def clear_query() -> None:
+    """Reset the composer and its most recent result from a button callback."""
+    st.session_state.query_input = ""
+    st.session_state.query_response = None
+    st.session_state.query_trace = None
+
 query = st.text_area(
     "Describe what you want to know about the Jira backlog:",
-    placeholder="e.g., Show me all critical bugs and their assignees",
-    height=80,
+    placeholder="Ask about sprint health, delivery risk, velocity, ownership, or specific tickets…",
+    height=110,
     label_visibility="collapsed",
     key="query_input",
 )
 
-submit_col, clear_col = st.columns([1, 1])
+submit_col, clear_col, hint_col = st.columns([2, 1, 3])
 with submit_col:
-    submitted = st.button("🚀 Run Agent", width="stretch", type="primary", key="run_agent")
+    submitted = st.button("Run analysis", width="stretch", type="primary", key="run_agent")
 with clear_col:
-    if st.button("🗑️ Clear", width="stretch"):
-        st.session_state.query_response = None
-        st.session_state.query_trace = None
-        st.rerun()
+    st.button("Clear", width="stretch", key="clear_query", on_click=clear_query)
+with hint_col:
+    st.caption("Tip: detailed reports load a skill; simple lookups call data tools directly.")
+
+# ── Compact prompt gallery ────────────────────────────────────────────────────
+with st.expander("Start with an example", expanded=False):
+    workflow_tab, quick_tab, command_tab = st.tabs(
+        ["Guided workflow", "Quick question", "Slash commands"]
+    )
+
+    with workflow_tab:
+        selected_index = st.selectbox(
+            "Workflow",
+            options=range(len(GUIDED_EXAMPLES)),
+            format_func=lambda index: GUIDED_EXAMPLES[index].title,
+            key="guided_workflow_select",
+        )
+        selected_example = GUIDED_EXAMPLES[selected_index]
+        st.caption(selected_example.outcome)
+        st.markdown(f"> {selected_example.prompt}")
+        skill_route = " + ".join(selected_example.skills)
+        tool_route = " → ".join(selected_example.tools)
+        st.markdown(
+            f'<div class="example-route">Skill: {skill_route}<br>Tools: {tool_route}</div>',
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "Use this workflow",
+            key="guided_example_load",
+            width="stretch",
+            on_click=set_query_prompt,
+            args=(selected_example.prompt,),
+        )
+
+    with quick_tab:
+        quick_cols = st.columns(2)
+        for i, prompt in enumerate(QUICK_TOOL_EXAMPLES):
+            with quick_cols[i % 2]:
+                st.button(
+                    prompt,
+                    key=f"quick_example_{i}",
+                    width="stretch",
+                    on_click=set_query_prompt,
+                    args=(prompt,),
+                )
+
+    with command_tab:
+        st.caption("Slash commands explicitly launch one reusable BA skill.")
+        if _skills:
+            skill_cols = st.columns(min(len(_skills), 4))
+            for i, _sk in enumerate(_skills):
+                label = _sk.command or f"/{_sk.slug}"
+                with skill_cols[i % len(skill_cols)]:
+                    st.button(
+                        label,
+                        key=f"skill_{_sk.slug}",
+                        width="stretch",
+                        help=_sk.description,
+                        on_click=set_query_prompt,
+                        args=(label,),
+                    )
 
 # ── Execute Agent ─────────────────────────────────────────────────────────────
 if submitted and st.session_state.get("query_input", "").strip():
@@ -499,6 +554,18 @@ if "query_response" in st.session_state and st.session_state.query_response:
     st.markdown("### 📝 Agent Response")
     st.markdown(st.session_state.query_response)
     st.markdown("</div>", unsafe_allow_html=True)
+
+    tool_calls = summarize_tool_calls(st.session_state.get("query_trace"))
+    if tool_calls:
+        route_labels = []
+        for call in tool_calls:
+            label = call["name"]
+            if call["skill_name"]:
+                label += f" ({call['skill_name']})"
+            route_labels.append(f"`{label}`")
+        with st.container(border=True):
+            st.markdown("**✅ Observed execution**")
+            st.markdown(" → ".join(route_labels))
 
     # Agent trace expander
     if "query_trace" in st.session_state and st.session_state.query_trace:
@@ -538,49 +605,47 @@ if "query_response" in st.session_state and st.session_state.query_response:
                     st.markdown("---")
 
 # ── Ticket Data Table ─────────────────────────────────────────────────────────
-st.markdown('<div class="ticket-card">', unsafe_allow_html=True)
-st.markdown("### 📊 Jira Backlog Tickets")
-
 tickets = get_all_tickets(data_source=data_source, jira_config=active_jira_config)
-if tickets:
-    df = pd.DataFrame(tickets)
-    # Reorder and select columns for display
-    display_cols = [
-        "key",
-        "type",
-        "priority",
-        "status",
-        "assignee",
-        "story_points",
-        "sprint",
-        "summary",
-    ]
-    available_cols = [c for c in display_cols if c in df.columns]
-    extra_cols = [c for c in df.columns if c not in available_cols and c != "labels" and c != "description"]
-    display_df = df[available_cols + extra_cols].copy()
+with st.expander(f"Browse Jira backlog · {len(tickets)} tickets", expanded=False):
+    st.caption("Reference the source data without leaving the analysis workspace.")
+    if tickets:
+        df = pd.DataFrame(tickets)
+        display_cols = [
+            "key",
+            "type",
+            "priority",
+            "status",
+            "assignee",
+            "story_points",
+            "sprint",
+            "summary",
+        ]
+        available_cols = [c for c in display_cols if c in df.columns]
+        extra_cols = [
+            c
+            for c in df.columns
+            if c not in available_cols and c not in {"labels", "description"}
+        ]
+        display_df = df[available_cols + extra_cols].copy().fillna("—")
 
-    # Replace None with "—" for display
-    display_df = display_df.fillna("—")
-
-    st.dataframe(
-        display_df,
-        width="stretch",
-        hide_index=True,
-        height=550,
-        column_config={
-            "key": st.column_config.TextColumn("Key", width="small"),
-            "type": st.column_config.TextColumn("Type", width="small"),
-            "priority": st.column_config.TextColumn("Priority", width="small"),
-            "status": st.column_config.TextColumn("Status", width="small"),
-            "assignee": st.column_config.TextColumn("Assignee", width="medium"),
-            "story_points": st.column_config.NumberColumn("SP", width="small"),
-            "sprint": st.column_config.TextColumn("Sprint", width="medium"),
-            "summary": st.column_config.TextColumn("Summary", width="large"),
-        },
-    )
-else:
-    st.warning("No ticket data available. Check data/jira_export.json.")
-st.markdown("</div>", unsafe_allow_html=True)
+        st.dataframe(
+            display_df,
+            width="stretch",
+            hide_index=True,
+            height=430,
+            column_config={
+                "key": st.column_config.TextColumn("Key", width="small"),
+                "type": st.column_config.TextColumn("Type", width="small"),
+                "priority": st.column_config.TextColumn("Priority", width="small"),
+                "status": st.column_config.TextColumn("Status", width="small"),
+                "assignee": st.column_config.TextColumn("Assignee", width="medium"),
+                "story_points": st.column_config.NumberColumn("SP", width="small"),
+                "sprint": st.column_config.TextColumn("Sprint", width="medium"),
+                "summary": st.column_config.TextColumn("Summary", width="large"),
+            },
+        )
+    else:
+        st.warning("No ticket data is available for the selected source.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown(

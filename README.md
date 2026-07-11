@@ -30,7 +30,8 @@ A LangChain ReAct agent that analyzes Jira backlogs — reasons about which tool
 **A progressive-disclosure _Agent Skills_ layer on a ReAct core** — the same shape
 Claude Code uses. It composes four well-known patterns:
 
-- **ReAct** (Reason → Act → Observe) as the base agent loop.
+- **ReAct-style tool loop** (Reason → Act → Observe) through LangChain's
+  `create_agent` API as the base agent loop.
 - **Agent Skills with progressive disclosure** — only each skill's *name + description*
   sits in the prompt; the full procedure is fetched on demand via `load_skill`.
 - **Orchestrator–workers** — the agent delegates a self-contained sub-task to a

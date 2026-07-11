@@ -19,10 +19,10 @@ A LangChain ReAct agent that reads a mock Jira export (JSON), summarizes tickets
 4. `calculate_metrics(metric_type)` — Computes backlog metrics: total_tickets, by_priority, by_status, unassigned_count, total_story_points, velocity_by_sprint.
 
 ## Agent Behavior
-- Uses create_react_agent from langchain.agents
+- Uses `create_agent` from `langchain.agents`
 - LLM: ChatOpenAI with DeepSeek base_url
-- ReAct prompt template (hwchase17/react from langchain hub)
-- AgentExecutor with verbose=True, max_iterations=10
+- ReAct-style tool loop compiled as a LangGraph state graph
+- System prompt passed directly through `create_agent`
 - System prompt: "You are a BA Assistant AI agent. You help Product Owners analyze Jira backlogs. You have tools to load tickets, filter them, search them, and calculate metrics. Always use tools to get data before answering. Provide structured, actionable summaries."
 
 ## File Structure
@@ -31,7 +31,7 @@ ba-jira-agent/
 ├── data/
 │   └── jira_export.json       # ALREADY CREATED — 20 mock tickets
 ├── tools.py                   # 4 @tool functions
-├── agent.py                   # Agent + AgentExecutor setup
+├── agent.py                   # Compiled LangChain/LangGraph agent setup
 ├── run.py                     # CLI entry point (interactive + single query)
 ├── requirements.txt           # langchain, langchain-openai, python-dotenv
 ├── .env.example               # DEEPSEEK_API_KEY=your-key-here
@@ -57,9 +57,8 @@ Each tool must be decorated with @tool from langchain.tools. Include docstrings 
 ## agent.py — Detailed
 - Load DEEPSEEK_API_KEY from .env via dotenv
 - Create ChatOpenAI(model="deepseek-v4-flash", base_url="https://api.deepseek.com/v1", temperature=0)
-- Pull ReAct prompt from langchain hub: hub.pull("hwchase17/react")
-- Create agent: create_react_agent(llm, tools, prompt)
-- Create executor: AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=10, handle_parsing_errors=True)
+- Create agent: `create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT)`
+- Invoke the compiled graph with a `messages` state
 - Export `executor` and `run_agent(query)` function
 
 ## run.py — Detailed
@@ -92,7 +91,7 @@ DEEPSEEK_API_KEY=your-deepseek-api-key-here
 - The .env file must be loaded from the project directory
 - All tool functions must return strings (not dicts) — the LLM needs readable text
 - Tool docstrings must be clear — the LLM decides which tool to call based on them
-- handle_parsing_errors=True on AgentExecutor — DeepSeek may occasionally format ReAct output incorrectly
+- Tool-call errors should be surfaced through the compiled agent trace for diagnosis
 
 ## Skill Layer (added)
 

@@ -8,7 +8,7 @@ Wrap the existing LangChain ReAct agent (ba-jira-agent) in a Streamlit web UI ma
 
 ## Existing Files (DO NOT MODIFY)
 - tools.py — 4 @tool functions (load_tickets, filter_tickets, search_tickets, calculate_metrics)
-- agent.py — LangGraph create_react_agent + DeepSeek + run_agent(query)
+- agent.py — LangChain create_agent + DeepSeek + run_agent(query)
 - data/jira_export.json — 20 mock Jira tickets
 - .env — DEEPSEEK_API_KEY
 
