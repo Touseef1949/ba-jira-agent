@@ -83,6 +83,7 @@ st.set_page_config(
 APP_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0&display=swap');
 
 :root {
   --accent: #0C66E4;
@@ -104,6 +105,21 @@ APP_CSS = """
 }
 
 * { font-family: var(--font) !important; }
+[data-testid="stIconMaterial"],
+[data-testid="stIconMaterial"] *,
+.material-symbols-rounded {
+  font-family: "Material Symbols Rounded" !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  direction: ltr !important;
+  -webkit-font-feature-settings: "liga" !important;
+  -webkit-font-smoothing: antialiased !important;
+  font-feature-settings: "liga" !important;
+}
 html { scroll-behavior: smooth; }
 .stApp { background: var(--canvas); color: var(--ink); }
 header[data-testid="stHeader"], [data-testid="stToolbar"] { display: none !important; }
@@ -160,9 +176,10 @@ header[data-testid="stHeader"], [data-testid="stToolbar"] { display: none !impor
 
 /* Streamlit surfaces */
 [data-testid="stTabs"] [role="tablist"] { gap: .35rem; border-bottom: 1px solid var(--border); }
-[data-testid="stTabs"] button[role="tab"] { color: var(--muted) !important; font-weight: 600 !important; padding: .7rem 1rem !important; }
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { color: var(--accent) !important; }
-[data-testid="stTabs"] [data-baseweb="tab-highlight"] { background: var(--accent) !important; }
+[data-testid="stTabs"] [role="tab"] { color: var(--muted) !important; font-weight: 600 !important; padding: .7rem 1rem !important; }
+[data-testid="stTabs"] [role="tab"] p { color: inherit !important; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] { color: var(--accent) !important; }
+[data-testid="stTabs"] [role="tab"] .react-aria-SelectionIndicator { background: var(--accent) !important; }
 [data-testid="stVerticalBlockBorderWrapper"] {
   background: var(--surface); border-color: var(--border) !important; border-radius: var(--radius) !important;
   box-shadow: var(--shadow);
@@ -182,6 +199,9 @@ header[data-testid="stHeader"], [data-testid="stToolbar"] { display: none !impor
 .stButton button:active { transform: scale(.985); }
 .stButton button[kind="primary"] { background: var(--accent) !important; border-color: var(--accent) !important; color: white !important; }
 .stButton button[kind="primary"]:hover { background: var(--accent-hover) !important; color: white !important; }
+a, a:visited { color: var(--accent); }
+[data-testid="stToggle"] [data-checked="true"],
+[data-testid="stCheckbox"] [data-checked="true"] { background-color: var(--accent) !important; }
 
 /* Assistant */
 .section-kicker { color: var(--accent) !important; font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }

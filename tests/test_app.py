@@ -130,3 +130,24 @@ class TestAppSmoke:
         markdown_texts = [str(m.value) for m in at.markdown]
         assert any("What do you need to know?" in text for text in markdown_texts)
         assert at.button(key="guided_example_load")
+
+    @pytest.mark.smoke
+    def test_app_preserves_streamlit_icon_font_and_product_palette(
+        self, mock_agent_service_module
+    ):
+        """Global typography must not break Streamlit icons or reintroduce green UI states."""
+        from streamlit.testing.v1 import AppTest
+
+        app_path = os.path.join(PROJECT_DIR, "app.py")
+        with patch.dict(
+            "sys.modules",
+            {"services.agent_service": mock_agent_service_module},
+        ):
+            at = AppTest.from_file(app_path)
+
+        at.run(timeout=10)
+        assert not at.exception
+        css = "\n".join(str(markdown.value) for markdown in at.markdown)
+        assert '[data-testid="stIconMaterial"]' in css
+        assert 'font-family: "Material Symbols Rounded" !important' in css
+        assert "--accent: #0C66E4" in css
