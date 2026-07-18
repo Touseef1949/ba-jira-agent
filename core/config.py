@@ -6,6 +6,7 @@ a safe_secret helper for masking sensitive values in logs/display.
 """
 
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -41,55 +42,53 @@ APP_PORT = int(os.getenv("APP_PORT", "8503"))
 # Compiled regex patterns for detecting common prompt injection / jailbreak
 # attempts. Used by agent_service.py to reject malicious queries before they
 # reach the LLM.
-import re as _re
-
-PROMPT_INJECTION_GUARD: list[tuple[str, _re.Pattern]] = [
+PROMPT_INJECTION_GUARD: list[tuple[str, re.Pattern[str]]] = [
     (
         "ignore_previous_instructions",
-        _re.compile(
+        re.compile(
             r"(ignore|forget|disregard)\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|directives?)",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
     (
         "system_prompt_leak",
-        _re.compile(
+        re.compile(
             r"(reveal|show|print|display|output|tell\s+me)\s+(me\s+)?(your\s+)?(system\s+)?(prompt|instructions?|directives?|rules?)",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
     (
         "role_override",
-        _re.compile(
+        re.compile(
             r"(you\s+are\s+now|act\s+as|pretend\s+you\s+are|you\s+are\s+a)\s+(DAN|jailbreak|evil|unfiltered|unrestricted)",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
     (
         "delimiter_attack",
-        _re.compile(
+        re.compile(
             r"_{3,}|={3,}|-{3,}|\]{3,}|\[{3,}|<\|.*?\|>",
         ),
     ),
     (
         "encoding_obfuscation",
-        _re.compile(
+        re.compile(
             r"(base64|rot13|decode|encode)\s*\(?\s*['\"].*?['\"]\s*\)?",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
     (
         "nested_prompt",
-        _re.compile(
+        re.compile(
             r"\[system\]|\[/system\]|\[assistant\]|\[/assistant\]|\[user\]|\[/user\]",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
     (
         "system_override",
-        _re.compile(
+        re.compile(
             r"(?<!\[)system\s*:\s*",
-            _re.IGNORECASE,
+            re.IGNORECASE,
         ),
     ),
 ]
