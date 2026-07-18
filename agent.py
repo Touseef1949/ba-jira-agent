@@ -33,8 +33,11 @@ if not DEEPSEEK_API_KEY:
     )
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
+MODEL_ID = "deepseek-v4-flash"
+PROMPT_VERSION = "ba-jira-agent-system-v1"
+
 llm = ChatOpenAI(
-    model="deepseek-v4-flash",
+    model=MODEL_ID,
     base_url="https://api.deepseek.com/v1",
     api_key=DEEPSEEK_API_KEY,
     temperature=0,

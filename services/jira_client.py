@@ -166,7 +166,9 @@ def _extract_text_from_adf(node: Any) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, list):
-        return " ".join(part for part in (_extract_text_from_adf(item) for item in node) if part).strip()
+        return " ".join(
+            part for part in (_extract_text_from_adf(item) for item in node) if part
+        ).strip()
     if not isinstance(node, dict):
         return ""
 

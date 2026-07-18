@@ -11,7 +11,6 @@ import os
 import traceback
 from collections import deque
 from datetime import datetime, timezone
-from statistics import median
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -104,10 +103,7 @@ def get_latency_stats(operation: str | None = None) -> dict:
             - operation (str or None): Operation name if filtered.
     """
     if operation:
-        values = sorted(
-            e["latency_ms"] for e in _latency_buffer
-            if e["operation"] == operation
-        )
+        values = sorted(e["latency_ms"] for e in _latency_buffer if e["operation"] == operation)
     else:
         values = sorted(e["latency_ms"] for e in _latency_buffer)
 

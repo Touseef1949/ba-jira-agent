@@ -50,8 +50,8 @@ def validate_query(query: str) -> tuple[bool, str]:
             return False, "Query contains suspicious patterns."
 
     # Check prompt-injection / jailbreak signatures
-    for rule_name, pattern in PROMPT_INJECTION_GUARD:
-        if pattern.search(query):
+    for rule_name, compiled_pattern in PROMPT_INJECTION_GUARD:
+        if compiled_pattern.search(query):
             log_error(
                 "prompt_injection",
                 f"Blocked suspicious query matching rule '{rule_name}'",
@@ -82,11 +82,7 @@ def compute_metrics(tickets: list) -> DashboardMetrics:
     total = len(tickets)
     total_sp = sum(t.get("story_points", 0) or 0 for t in tickets)
     unassigned = sum(1 for t in tickets if not t.get("assignee"))
-    open_bugs = sum(
-        1
-        for t in tickets
-        if t.get("type") == "Bug" and t.get("status") == "Open"
-    )
+    open_bugs = sum(1 for t in tickets if t.get("type") == "Bug" and t.get("status") == "Open")
 
     return DashboardMetrics(
         total=total,

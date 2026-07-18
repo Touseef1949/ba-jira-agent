@@ -93,9 +93,7 @@ def check_health(url: str, timeout: int = 30) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Health check for BA Jira Agent"
-    )
+    parser = argparse.ArgumentParser(description="Health check for BA Jira Agent")
     parser.add_argument(
         "--local",
         action="store_true",
